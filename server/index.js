@@ -34,7 +34,6 @@ app.use('/api/ai', aiRoutes);
 
 // Serve React build in production
 if (process.env.NODE_ENV === 'production') {
-  // Try multiple possible paths for the client build
   const possiblePaths = [
     path.resolve(process.cwd(), 'client/dist'),
     path.join(__dirname, '../client/dist'),
@@ -48,20 +47,26 @@ if (process.env.NODE_ENV === 'production') {
       clientDistPath = p;
       break;
     } catch {
-      // Try next path
+      // try next
     }
   }
 
   if (clientDistPath) {
     console.log('Serving React client from:', clientDistPath);
     app.use(express.static(clientDistPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(clientDistPath, 'index.html'));
-    });
   } else {
-    console.warn('React build not found in any expected location. Searched:', possiblePaths);
+    console.warn('React build not found in any expected location:', possiblePaths);
     console.warn('Running in API-only mode. Ensure the client build step runs successfully.');
   }
+
+  // Always provide the catch-all route so SPAs work
+  app.get('*', (req, res) => {
+    if (clientDistPath) {
+      res.sendFile(path.join(clientDistPath, 'index.html'));
+    } else {
+      res.status(503).json({ error: 'Frontend not built. Please check deployment build logs.' });
+    }
+  });
 }
 
 // Error handling middleware
