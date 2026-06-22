@@ -53,7 +53,7 @@ if (process.env.NODE_ENV === 'production') {
 
   if (clientDistPath) {
     console.log('Serving React client from:', clientDistPath);
-    app.use(express.static(clientDistPath));
+    app.use(express.static(clientDistPath, { index: 'index.html' }));
   } else {
     console.warn('React build not found in any expected location:', possiblePaths);
     console.warn('Running in API-only mode. Ensure the client build step runs successfully.');
