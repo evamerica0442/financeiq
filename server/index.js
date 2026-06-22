@@ -34,10 +34,22 @@ app.use('/api/ai', aiRoutes);
 
 // Serve React build in production
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../client/dist')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
-  });
+  const clientDistPath = path.join(__dirname, '../client/dist');
+  console.log('Serving client from:', clientDistPath);
+
+  // Check if dist exists and serve it
+  try {
+    require('fs').accessSync(clientDistPath);
+    app.use(express.static(clientDistPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(clientDistPath, 'index.html'));
+    });
+    console.log('React build found at:', clientDistPath);
+  } catch (err) {
+    console.warn('React build not found at', clientDistPath, '- API-only mode');
+    // Still start the server without serving static files
+    // This handles the case where frontend hasn't been built yet
+  }
 }
 
 // Error handling middleware
