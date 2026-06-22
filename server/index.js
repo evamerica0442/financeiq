@@ -34,21 +34,33 @@ app.use('/api/ai', aiRoutes);
 
 // Serve React build in production
 if (process.env.NODE_ENV === 'production') {
-  const clientDistPath = path.join(__dirname, '../client/dist');
-  console.log('Serving client from:', clientDistPath);
+  // Try multiple possible paths for the client build
+  const possiblePaths = [
+    path.resolve(process.cwd(), 'client/dist'),
+    path.join(__dirname, '../client/dist'),
+    path.join(__dirname, '../../client/dist'),
+  ];
 
-  // Check if dist exists and serve it
-  try {
-    require('fs').accessSync(clientDistPath);
+  let clientDistPath = null;
+  for (const p of possiblePaths) {
+    try {
+      require('fs').accessSync(p);
+      clientDistPath = p;
+      break;
+    } catch {
+      // Try next path
+    }
+  }
+
+  if (clientDistPath) {
+    console.log('Serving React client from:', clientDistPath);
     app.use(express.static(clientDistPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(clientDistPath, 'index.html'));
     });
-    console.log('React build found at:', clientDistPath);
-  } catch (err) {
-    console.warn('React build not found at', clientDistPath, '- API-only mode');
-    // Still start the server without serving static files
-    // This handles the case where frontend hasn't been built yet
+  } else {
+    console.warn('React build not found in any expected location. Searched:', possiblePaths);
+    console.warn('Running in API-only mode. Ensure the client build step runs successfully.');
   }
 }
 
