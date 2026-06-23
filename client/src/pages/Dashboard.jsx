@@ -74,6 +74,7 @@ export default function Dashboard() {
   const [assets, setAssets] = useState([]);
   const [allTxns, setAllTxns] = useState([]); // 6 months of transactions for bar chart
   const [insights, setInsights] = useState(null);
+  const [networthInsights, setNetworthInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [groupAnalysis, setGroupAnalysis] = useState(null);
@@ -91,6 +92,7 @@ export default function Dashboard() {
   };
 
   useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchNetworthInsights(); }, []);
 
   async function fetchData() {
     try {
@@ -106,6 +108,15 @@ export default function Dashboard() {
       setAllTxns(allTxRes.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  }
+
+  async function fetchNetworthInsights() {
+    try {
+      const res = await api.get('/networth/insights');
+      setNetworthInsights(res.data);
+    } catch (e) {
+      // Non-critical — don't log
+    }
   }
 
   useEffect(() => {
@@ -365,7 +376,7 @@ export default function Dashboard() {
           { title: 'Monthly Income', value: income, color: '#00C896', icon: '💰' },
           { title: 'Total Spent', value: spent, color: '#FF5C5C', icon: '💳' },
           { title: 'Saved This Month', value: saved, color: saved >= 0 ? '#4D9FFF' : '#FF5C5C', icon: '🏦' },
-          { title: 'Net Worth', value: netWorth, color: '#9B7FFF', icon: '📈' },
+          { title: 'Net Worth', value: netWorth, color: '#9B7FFF', icon: '📈', insight: networthInsights },
         ].map((m, i) => (
           <div
             key={i}
@@ -386,6 +397,32 @@ export default function Dashboard() {
               className="text-2xl sm:text-3xl font-bold"
               style={{ color: m.color }}
             />
+            {m.insight && m.title === 'Net Worth' && (
+              <div className="mt-2 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <span className={`inline-flex items-center gap-0.5 text-xs font-medium ${
+                    m.insight.trend === 'up' ? 'text-[#00C896]' :
+                    m.insight.trend === 'down' ? 'text-[#FF5C5C]' : 'text-[#8B92A5]'
+                  }`}>
+                    <svg className={`w-3 h-3 ${m.insight.trend === 'down' ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                    </svg>
+                    {m.insight.change >= 0 ? '+' : ''}{m.insight.changePercent}%
+                  </span>
+                  <span className="text-[10px] text-[#8B92A5]">vs last month</span>
+                </div>
+                {m.insight.biggestAssetGain?.name !== 'N/A' && (
+                  <p className="text-[10px] text-[#8B92A5] leading-tight">
+                    🏆 {m.insight.biggestAssetGain.name} grew R{(m.insight.biggestAssetGain.change || 0).toLocaleString()}
+                  </p>
+                )}
+                {m.insight.projectedNetWorth12Months && (
+                  <p className="text-[10px] text-[#4D9FFF] leading-tight">
+                    📈 Projected: R{m.insight.projectedNetWorth12Months.toLocaleString()} in 12 months
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         ))}
       </div>

@@ -113,6 +113,15 @@ router.post('/', async (req, res) => {
       [req.user.id, name, amount, category, categoryId, date || new Date().toISOString().split('T')[0], notes || null, is_future || false]
     );
 
+    // Auto-reduce liability if this looks like a loan/bond repayment
+    try {
+      const { reduceLiabilityFromRepayment } = require('../services/networthService');
+      await reduceLiabilityFromRepayment(req.user.id, name, amount);
+    } catch (liabilityErr) {
+      // Don't fail the request if liability reduction fails
+      console.error('Liability reduction error:', liabilityErr.message);
+    }
+
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error('Create transaction error:', err);

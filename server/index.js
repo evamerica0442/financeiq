@@ -18,6 +18,9 @@ const categoryRoutes = require('./routes/categories');
 const reportRoutes = require('./routes/reports');
 const analysisRoutes = require('./routes/analysis');
 
+// Start net worth automation scheduler
+require('./services/scheduler');
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 

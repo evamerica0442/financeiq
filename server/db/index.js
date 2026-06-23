@@ -23,6 +23,7 @@ function runMigrations() {
     try {
       const schemaPath = path.join(__dirname, 'schema.sql');
       const migrationPath = path.join(__dirname, 'migration.sql');
+      const networthMigrationPath = path.join(__dirname, 'migrations', 'networth.sql');
 
       // Read SQL file, strip comments, return executable statements
       function readSql(filePath) {
@@ -63,6 +64,11 @@ function runMigrations() {
 
       await executeStatements(schemaSql);
       await executeStatements(migrationSql);
+
+      // Run networth migration
+      const networthSql = readSql(networthMigrationPath);
+      await executeStatements(networthSql);
+
       console.log('✓ Database migrations complete');
       resolve();
     } catch (err) {

@@ -2,6 +2,7 @@ const express = require('express');
 const Groq = require('groq-sdk');
 const pool = require('../db');
 const authMiddleware = require('../middleware/authMiddleware');
+const { getNetworthInsights, getNetworthHistory } = require('../services/networthService');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -55,17 +56,21 @@ const MOCK_INSIGHTS = {
 // Helper: fetch user's complete financial snapshot from the database
 // -----------------------------------------------------------------------------
 async function getFinancialSnapshot(userId) {
-  const [transactions, budgets, goals, assets] = await Promise.all([
+  const [transactions, budgets, goals, assets, networthInsights, networthHistory] = await Promise.all([
     pool.query('SELECT * FROM transactions WHERE user_id = $1 ORDER BY date DESC LIMIT 100', [userId]),
     pool.query('SELECT * FROM budgets WHERE user_id = $1', [userId]),
     pool.query('SELECT * FROM goals WHERE user_id = $1', [userId]),
     pool.query('SELECT * FROM assets WHERE user_id = $1', [userId]),
+    getNetworthInsights(userId),
+    getNetworthHistory(userId, 6),
   ]);
   return {
     transactions: transactions.rows,
     budgets: budgets.rows,
     goals: goals.rows,
     assets: assets.rows,
+    networthInsights,
+    networthHistory,
   };
 }
 
