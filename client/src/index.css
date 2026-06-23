@@ -254,6 +254,89 @@ h1, h2, h3, h4, h5, h6 {
   font-variant-numeric: tabular-nums;
 }
 
+/* ===== Print styles for Reports page ===== */
+@media print {
+  /* Hide app chrome — sidebar, nav, header, footer */
+  .sidebar,
+  nav,
+  header,
+  .mobile-nav,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Make sure report content is visible and full-width */
+  #report-print-area {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 20px !important;
+  }
+
+  #report-print-area .lg\:ml-\[240px\] {
+    margin-left: 0 !important;
+  }
+
+  #report-print-area .lg\:col-span-2 {
+    grid-column: span 2 / span 2 !important;
+  }
+
+  /* Light background for printed pages */
+  body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #1a1a2e !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Ensure text colors are readable on paper */
+  [class*="text-"] {
+    color: #1a1a2e !important;
+  }
+
+  /* Force dark-background cards to have white bg in print */
+  .rounded-2xl,
+  .rounded-xl {
+    background: #ffffff !important;
+    border: 1px solid #e0e0e0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Progress bars should render */
+  .h-full.rounded-full {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  /* Chart container hidden in print (interactive element) */
+  .no-print {
+    display: none !important;
+  }
+
+  /* Print heading style */
+  .print-heading {
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    margin-bottom: 12px !important;
+    border-bottom: 2px solid #1a1a2e !important;
+    padding-bottom: 4px !important;
+  }
+
+  /* Prevent page breaks inside groups */
+  .animate-on-mount {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    animation: none !important;
+  }
+
+  @page {
+    margin: 15mm;
+  }
+}
+
 /* ===== Safe area for mobile ===== */
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
