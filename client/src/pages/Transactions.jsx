@@ -3,10 +3,10 @@ import api from '../api';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Card from '../components/ui/Card';
-import Badge from '../components/ui/Badge';
-import AmountInput from '../components/ui/AmountInput';
 import BottomSheet from '../components/ui/BottomSheet';
+import AmountInput from '../components/ui/AmountInput';
 import Skeleton, { TransactionListSkeleton } from '../components/ui/Skeleton';
+import ImportModal from '../components/ImportModal';
 import { useToast } from '../hooks/useToast';
 
 const CATEGORIES = ['Housing', 'Groceries', 'Transport', 'Dining out', 'Utilities', 'Subscriptions', 'Health', 'Entertainment', 'Education', 'Savings', 'Income', 'Other'];
@@ -34,10 +34,19 @@ export default function Transactions() {
   const [searchQuery, setSearchQuery] = useState('');
   const { addToast } = useToast();
 
+  const [showImport, setShowImport] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
   const [formData, setFormData] = useState({
     name: '', amount: '', category: 'Groceries', date: new Date().toISOString().split('T')[0], notes: ''
   });
   const [formError, setFormError] = useState('');
+
+  const handleExport = () => {
+    setExporting(true);
+    window.open(`/api/export/report?month=${filterMonth}`, '_blank');
+    setTimeout(() => setExporting(false), 2000);
+  };
 
   useEffect(() => { fetchTransactions(); }, [filterMonth]);
 
@@ -157,6 +166,45 @@ export default function Transactions() {
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">Transactions</h1>
           <p className="text-sm text-[var(--text-secondary)]">{filtered.length} transactions this month</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Export PDF */}
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 hover:scale-105 active:scale-95"
+            style={{
+              backgroundColor: 'var(--bg-tertiary)',
+              color: 'var(--text-secondary)',
+              opacity: exporting ? 0.6 : 1,
+            }}
+            title="Export monthly report as PDF"
+          >
+            {exporting ? (
+              <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--accent-green)', borderTopColor: 'transparent' }} />
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            )}
+            <span className="hidden sm:inline">Export PDF</span>
+          </button>
+
+          {/* Import */}
+          <button
+            onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 hover:scale-105 active:scale-95"
+            style={{
+              backgroundColor: 'var(--accent-green)',
+              color: '#0D0F14',
+            }}
+            title="Import transactions from file"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            <span className="hidden sm:inline">Import</span>
+          </button>
         </div>
       </div>
 
@@ -400,6 +448,13 @@ export default function Transactions() {
           </div>
         </form>
       </BottomSheet>
+
+      {/* Import Modal */}
+      <ImportModal
+        isOpen={showImport}
+        onClose={() => setShowImport(false)}
+        onSuccess={() => fetchTransactions()}
+      />
     </div>
   );
 }

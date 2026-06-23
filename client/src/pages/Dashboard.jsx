@@ -79,15 +79,23 @@ export default function Dashboard() {
   const [assets, setAssets] = useState([]);
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const chartRef = useRef(null);
+
+  const currentMonth = new Date().toISOString().slice(0, 7);
+
+  const handleExport = () => {
+    setExporting(true);
+    window.open(`/api/export/report?month=${currentMonth}`, '_blank');
+    setTimeout(() => setExporting(false), 2000);
+  };
 
   useEffect(() => { fetchData(); }, []);
 
   async function fetchData() {
     try {
-      const month = new Date().toISOString().slice(0, 7);
       const [txRes, bRes, aRes] = await Promise.all([
-        api.get('/transactions?month=' + month),
+        api.get('/transactions?month=' + currentMonth),
         api.get('/budgets'),
         api.get('/networth'),
       ]);
@@ -204,51 +212,77 @@ export default function Dashboard() {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 lg:pb-8 space-y-6">
       {/* ── Hero banner ─────────────────────────────────────────────────── */}
-      <div
-        className="rounded-3xl p-6 relative overflow-hidden"
-        style={{
-          background: 'linear-gradient(135deg, #1A1F2E 0%, #0D0F14 100%)',
-          border: '1px solid rgba(255,255,255,0.04)',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-        }}
-      >
-        {/* Glow orbs */}
-        <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-[#00C896]/5 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-20 -left-20 w-64 h-64 rounded-full bg-[#4D9FFF]/5 blur-3xl pointer-events-none" />
+      <div className="flex items-start justify-between gap-4">
+        <div
+          className="flex-1 rounded-3xl p-6 relative overflow-hidden"
+          style={{
+            background: 'linear-gradient(135deg, #1A1F2E 0%, #0D0F14 100%)',
+            border: '1px solid rgba(255,255,255,0.04)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+          }}
+        >
+          {/* Glow orbs */}
+          <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-[#00C896]/5 blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-20 -left-20 w-64 h-64 rounded-full bg-[#4D9FFF]/5 blur-3xl pointer-events-none" />
 
-        <div className="relative z-10">
-          <p className="text-[11px] font-semibold text-[#8B92A5] uppercase tracking-[0.08em] mb-1">
-            Total net worth
-          </p>
-          <div className="flex items-baseline gap-3">
-            <AnimatedNumber
-              value={netWorth}
-              decimals={0}
-              className="text-4xl sm:text-5xl font-bold text-[#F0F2F7]"
-            />
-            <span className={`inline-flex items-center gap-1 text-sm font-medium ${netDelta >= 0 ? 'text-[#00C896]' : 'text-[#FF5C5C]'}`}>
-              <svg className={`w-4 h-4 ${netDelta >= 0 ? '' : 'rotate-180'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 10l7-7m0 0l7 7m-7-7v18" />
-              </svg>
-              {netDelta >= 0 ? '+' : ''}{netDelta.toFixed(1)}%
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2 mt-4">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#00C896]/10 text-[#00C896] border border-[#00C896]/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00C896]" />
-              Income R{income.toLocaleString()}
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#FF5C5C]/10 text-[#FF5C5C] border border-[#FF5C5C]/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#FF5C5C]" />
-              Spent R{spent.toLocaleString()}
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#4D9FFF]/10 text-[#4D9FFF] border border-[#4D9FFF]/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#4D9FFF]" />
-              Saved R{saved.toLocaleString()}
-            </span>
+          <div className="relative z-10">
+            <p className="text-[11px] font-semibold text-[#8B92A5] uppercase tracking-[0.08em] mb-1">
+              Total net worth
+            </p>
+            <div className="flex items-baseline gap-3">
+              <AnimatedNumber
+                value={netWorth}
+                decimals={0}
+                className="text-4xl sm:text-5xl font-bold text-[#F0F2F7]"
+              />
+              <span className={`inline-flex items-center gap-1 text-sm font-medium ${netDelta >= 0 ? 'text-[#00C896]' : 'text-[#FF5C5C]'}`}>
+                <svg className={`w-4 h-4 ${netDelta >= 0 ? '' : 'rotate-180'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                </svg>
+                {netDelta >= 0 ? '+' : ''}{netDelta.toFixed(1)}%
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-4">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#00C896]/10 text-[#00C896] border border-[#00C896]/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00C896]" />
+                Income R{income.toLocaleString()}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#FF5C5C]/10 text-[#FF5C5C] border border-[#FF5C5C]/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#FF5C5C]" />
+                Spent R{spent.toLocaleString()}
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[#4D9FFF]/10 text-[#4D9FFF] border border-[#4D9FFF]/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#4D9FFF]" />
+                Saved R{saved.toLocaleString()}
+              </span>
+            </div>
           </div>
         </div>
+
+        {/* Export button */}
+        <button
+          onClick={handleExport}
+          disabled={exporting}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 hover:scale-105 active:scale-95 flex-shrink-0"
+          style={{
+            backgroundColor: '#1E2330',
+            color: '#8B92A5',
+            border: '1px solid #2A2F3E',
+            opacity: exporting ? 0.6 : 1,
+          }}
+          title="Export monthly report"
+        >
+          {exporting ? (
+            <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: '#00C896', borderTopColor: 'transparent' }} />
+          ) : (
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          )}
+          <span className="hidden sm:inline">Export report</span>
+        </button>
       </div>
+
 
       {/* ── Metric cards ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
