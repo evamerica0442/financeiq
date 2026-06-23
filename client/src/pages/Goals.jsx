@@ -1,28 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
-import GoalRow from '../components/GoalRow';
-import AIBubble from '../components/AIBubble';
+import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
+import Card from '../components/ui/Card';
+import Badge from '../components/ui/Badge';
+import ProgressBar from '../components/ui/ProgressBar';
+import BottomSheet from '../components/ui/BottomSheet';
+import AmountInput from '../components/ui/AmountInput';
+import Skeleton from '../components/ui/Skeleton';
+import { useToast } from '../hooks/useToast';
 
 export default function Goals() {
   const [goals, setGoals] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingGoal, setEditingGoal] = useState(null);
-  const [showDepositModal, setShowDepositModal] = useState(false);
-  const [depositGoal, setDepositGoal] = useState(null);
+  const [showSheet, setShowSheet] = useState(false);
+  const [showDepositSheet, setShowDepositSheet] = useState(false);
+  const [selectedGoal, setSelectedGoal] = useState(null);
   const [depositAmount, setDepositAmount] = useState('');
   const [formData, setFormData] = useState({
-    name: '',
-    target_amount: '',
-    saved_amount: '0',
-    monthly_contribution: '0',
-    target_date: ''
+    name: '', target_amount: '', saved_amount: '0', monthly_contribution: '0', target_date: ''
   });
   const [formError, setFormError] = useState('');
+  const { addToast } = useToast();
 
-  useEffect(() => {
-    fetchGoals();
-  }, []);
+  useEffect(() => { fetchGoals(); }, []);
 
   async function fetchGoals() {
     try {
@@ -35,75 +36,45 @@ export default function Goals() {
     }
   }
 
-  function openAddModal() {
-    setEditingGoal(null);
-    setFormData({
-      name: '',
-      target_amount: '',
-      saved_amount: '0',
-      monthly_contribution: '0',
-      target_date: ''
-    });
+  function openAddSheet() {
+    setSelectedGoal(null);
+    setFormData({ name: '', target_amount: '', saved_amount: '0', monthly_contribution: '0', target_date: '' });
     setFormError('');
-    setShowModal(true);
+    setShowSheet(true);
   }
 
-  function openEditModal(goal) {
-    setEditingGoal(goal);
-    setFormData({
-      name: goal.name,
-      target_amount: goal.target_amount.toString(),
-      saved_amount: goal.saved_amount.toString(),
-      monthly_contribution: goal.monthly_contribution.toString(),
-      target_date: goal.target_date || ''
-    });
-    setFormError('');
-    setShowModal(true);
+  function openDetailSheet(goal) {
+    setSelectedGoal(goal);
+    setShowSheet(true);
   }
 
-  function openDepositModal(goal) {
-    setDepositGoal(goal);
+  function openDepositSheet(goal) {
+    setSelectedGoal(goal);
     setDepositAmount('');
-    setShowDepositModal(true);
+    setShowDepositSheet(true);
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setFormError('');
-
     if (!formData.name || !formData.target_amount) {
       setFormError('Name and target amount are required.');
       return;
     }
-
     const target = parseFloat(formData.target_amount);
     const saved = parseFloat(formData.saved_amount) || 0;
     const contribution = parseFloat(formData.monthly_contribution) || 0;
-
-    if (isNaN(target) || target <= 0) {
-      setFormError('Target amount must be a positive number.');
-      return;
-    }
+    if (isNaN(target) || target <= 0) { setFormError('Target must be a positive number.'); return; }
 
     try {
-      if (editingGoal) {
-        await api.put(`/goals/${editingGoal.id}`, {
-          name: formData.name,
-          target_amount: target,
-          saved_amount: saved,
-          monthly_contribution: contribution,
-          target_date: formData.target_date || null
-        });
+      if (selectedGoal) {
+        await api.put(`/goals/${selectedGoal.id}`, { name: formData.name, target_amount: target, saved_amount: saved, monthly_contribution: contribution, target_date: formData.target_date || null });
+        addToast('Goal updated', 'success');
       } else {
-        await api.post('/goals', {
-          name: formData.name,
-          target_amount: target,
-          saved_amount: saved,
-          monthly_contribution: contribution,
-          target_date: formData.target_date || null
-        });
+        await api.post('/goals', { name: formData.name, target_amount: target, saved_amount: saved, monthly_contribution: contribution, target_date: formData.target_date || null });
+        addToast('Goal created', 'success');
       }
-      setShowModal(false);
+      setShowSheet(false);
       fetchGoals();
     } catch (err) {
       setFormError(err.response?.data?.error || 'Failed to save goal.');
@@ -111,9 +82,9 @@ export default function Goals() {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm('Delete this goal?')) return;
     try {
       await api.delete(`/goals/${id}`);
+      addToast('Goal deleted', 'info');
       fetchGoals();
     } catch (err) {
       console.error('Failed to delete goal:', err);
@@ -122,252 +93,215 @@ export default function Goals() {
 
   async function handleDeposit(e) {
     e.preventDefault();
-    if (!depositGoal || !depositAmount) return;
-
+    if (!selectedGoal || !depositAmount) return;
     const amount = parseFloat(depositAmount);
-    if (isNaN(amount) || amount <= 0) {
-      setFormError('Please enter a valid deposit amount.');
-      return;
-    }
+    if (isNaN(amount) || amount <= 0) { setFormError('Enter a valid amount.'); return; }
 
-    const newSaved = Number(depositGoal.saved_amount) + amount;
+    const newSaved = Number(selectedGoal.saved_amount) + amount;
     try {
-      await api.put(`/goals/${depositGoal.id}`, {
-        name: depositGoal.name,
-        target_amount: depositGoal.target_amount,
-        saved_amount: newSaved,
-        monthly_contribution: depositGoal.monthly_contribution,
-        target_date: depositGoal.target_date
+      await api.put(`/goals/${selectedGoal.id}`, {
+        name: selectedGoal.name, target_amount: selectedGoal.target_amount, saved_amount: newSaved,
+        monthly_contribution: selectedGoal.monthly_contribution, target_date: selectedGoal.target_date
       });
-      setShowDepositModal(false);
+      addToast(`R${amount.toLocaleString()} deposited!`, 'success');
+      setShowDepositSheet(false);
       fetchGoals();
     } catch (err) {
       setFormError(err.response?.data?.error || 'Failed to log deposit.');
     }
   }
 
-  const formatCurrency = (amount) => {
-    return 'R' + Number(amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  // AI projections for goals
-  const goalProjections = goals.map(goal => {
-    const remaining = Number(goal.target_amount) - Number(goal.saved_amount);
-    const monthsLeft = goal.monthly_contribution > 0 ? Math.ceil(remaining / Number(goal.monthly_contribution)) : null;
-    return { ...goal, remaining, monthsLeft };
-  });
+  const totalSaved = goals.reduce((sum, g) => sum + Number(g.saved_amount), 0);
+  const formatCurrency = (amount) => 'R' + Number(amount).toLocaleString('en-ZA', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 lg:pb-8">
+        <Skeleton variant="title" className="mb-6" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1, 2].map(i => <Skeleton key={i} variant="card" height="200px" />)}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Goals</h1>
-        <button
-          onClick={openAddModal}
-          className="mt-3 sm:mt-0 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          + Add Goal
-        </button>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 lg:pb-8 space-y-6">
+      {/* Hero */}
+      <div className="animate-on-mount">
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Goals</h1>
+        <p className="text-sm text-[var(--text-secondary)]">{goals.length} goals tracked</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          {goals.length === 0 ? (
-            <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-              <p className="text-gray-500 mb-4">No goals set yet. Create your first financial goal!</p>
-              <button onClick={openAddModal} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                Create Goal
+      {goals.length > 0 && (
+        <Card glow="green">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">Total saved</p>
+              <p className="text-3xl font-bold text-[var(--text-primary)] tracking-tight tabular-nums">{formatCurrency(totalSaved)}</p>
+            </div>
+            <div className="w-14 h-14 rounded-2xl bg-[var(--accent-green)]/10 flex items-center justify-center">
+              <svg className="w-7 h-7 text-[var(--accent-green)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Goal Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {goals.length > 0 ? goals.map(goal => {
+          const progress = goal.target_amount > 0 ? (goal.saved_amount / goal.target_amount) * 100 : 0;
+          const remaining = Number(goal.target_amount) - Number(goal.saved_amount);
+          const monthsLeft = goal.monthly_contribution > 0 ? Math.ceil(remaining / Number(goal.monthly_contribution)) : null;
+
+          return (
+            <Card key={goal.id} hover onClick={() => openDetailSheet(goal)}>
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-12 h-12 rounded-2xl bg-[var(--accent-blue)]/10 flex items-center justify-center text-xl flex-shrink-0">
+                  🎯
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-[var(--text-primary)]">{goal.name}</h3>
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    {formatCurrency(goal.saved_amount)} of {formatCurrency(goal.target_amount)}
+                  </p>
+                </div>
+                <Badge variant={progress >= 100 ? 'ok' : 'default'} size="sm">
+                  {progress.toFixed(0)}%
+                </Badge>
+              </div>
+
+              <ProgressBar value={Number(goal.saved_amount)} max={Number(goal.target_amount)} height="h-3" />
+
+              <div className="flex items-center justify-between mt-3">
+                <span className="text-xs text-[var(--text-secondary)]">
+                  {monthsLeft !== null ? `~${monthsLeft} months left` : 'No monthly contribution set'}
+                </span>
+                {goal.monthly_contribution > 0 && (
+                  <span className="text-xs font-medium text-[var(--accent-green)]">
+                    {formatCurrency(goal.monthly_contribution)}/mo
+                  </span>
+                )}
+              </div>
+
+              <button
+                onClick={(e) => { e.stopPropagation(); openDepositSheet(goal); }}
+                className="mt-3 w-full py-2 rounded-xl bg-[var(--accent-green)]/10 text-[var(--accent-green)] text-sm font-medium hover:bg-[var(--accent-green)]/20 transition-colors"
+              >
+                + Log deposit
               </button>
+            </Card>
+          );
+        }) : (
+          <div className="md:col-span-2 flex flex-col items-center py-16 text-center">
+            <div className="w-20 h-20 rounded-3xl bg-[var(--bg-tertiary)] flex items-center justify-center mb-4 text-3xl">
+              🎯
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {goals.map(goal => (
-                <GoalRow
-                  key={goal.id}
-                  goal={goal}
-                  onEdit={openEditModal}
-                  onDelete={handleDelete}
-                  onDeposit={openDepositModal}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* AI Goal Projections */}
-        <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm h-fit">
-          <div className="flex items-center space-x-2 mb-4">
-            <span className="text-xl">🤖</span>
-            <h2 className="text-lg font-semibold text-gray-900">Projections</h2>
+            <p className="text-lg font-medium text-[var(--text-primary)] mb-1">No goals yet</p>
+            <p className="text-sm text-[var(--text-secondary)] mb-4">Set your first financial goal and start tracking progress</p>
+            <Button onClick={openAddSheet}>Create Goal</Button>
           </div>
-          <div className="space-y-3">
-            {goalProjections.length === 0 ? (
-              <p className="text-gray-500 text-sm">Add goals to see projections</p>
-            ) : (
-              goalProjections.map(g => (
-                <AIBubble
-                  key={g.id}
-                  title={g.name}
-                  body={
-                    g.monthsLeft
-                      ? `At R${Number(g.monthly_contribution).toLocaleString()}/mo, you'll reach your goal in ~${g.monthsLeft} months (${new Date(Date.now() + g.monthsLeft * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })})`
-                      : `Set a monthly contribution to estimate completion time.`
-                  }
-                  type={g.monthsLeft && g.monthsLeft <= 12 ? 'ok' : 'info'}
-                />
-              ))
-            )}
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Add/Edit Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
-              {editingGoal ? 'Edit Goal' : 'Add Goal'}
-            </h2>
-
-            {formError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
-                {formError}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Goal Name</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="Emergency Fund"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Target Amount (R)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.target_amount}
-                  onChange={(e) => setFormData({...formData, target_amount: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="100000"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Saved So Far (R)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.saved_amount}
-                  onChange={(e) => setFormData({...formData, saved_amount: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="0"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Monthly Contribution (R)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.monthly_contribution}
-                  onChange={(e) => setFormData({...formData, monthly_contribution: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="5000"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Target Date (optional)</label>
-                <input
-                  type="date"
-                  value={formData.target_date}
-                  onChange={(e) => setFormData({...formData, target_date: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <div className="flex space-x-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  {editingGoal ? 'Update' : 'Add Goal'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* FAB */}
+      {goals.length > 0 && (
+        <button
+          onClick={openAddSheet}
+          className="fixed bottom-20 lg:bottom-8 right-6 z-40 w-14 h-14 rounded-2xl bg-[var(--accent-green)] text-[#0D0F14] shadow-[var(--shadow-glow-green)] flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-200"
+          aria-label="Add goal"
+        >
+          <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
       )}
 
-      {/* Deposit Modal */}
-      {showDepositModal && depositGoal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Log Deposit</h2>
-            <p className="text-sm text-gray-500 mb-4">
-              Add to "{depositGoal.name}" — Currently saved: {formatCurrency(depositGoal.saved_amount)}
+      {/* Goal Detail / Add Sheet */}
+      <BottomSheet isOpen={showSheet} onClose={() => setShowSheet(false)} title={selectedGoal && !showDepositSheet ? 'Goal Details' : 'New Goal'}>
+        {selectedGoal && !showDepositSheet ? (
+          <div className="space-y-4">
+            <div className="text-center">
+              <div className="w-16 h-16 rounded-2xl bg-[var(--accent-blue)]/10 flex items-center justify-center text-2xl mx-auto mb-3">
+                🎯
+              </div>
+              <h3 className="text-lg font-bold text-[var(--text-primary)]">{selectedGoal.name}</h3>
+              <p className="text-sm text-[var(--text-secondary)]">
+                {formatCurrency(selectedGoal.saved_amount)} of {formatCurrency(selectedGoal.target_amount)}
+              </p>
+            </div>
+
+            <ProgressBar value={Number(selectedGoal.saved_amount)} max={Number(selectedGoal.target_amount)} height="h-4" showLabel />
+
+            {(() => {
+              const remaining = Number(selectedGoal.target_amount) - Number(selectedGoal.saved_amount);
+              const monthsLeft = selectedGoal.monthly_contribution > 0 ? Math.ceil(remaining / Number(selectedGoal.monthly_contribution)) : null;
+              return (
+                <Card>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-[var(--text-secondary)]">Remaining</span>
+                      <span className="font-medium text-[var(--text-primary)]">{formatCurrency(remaining)}</span>
+                    </div>
+                    {monthsLeft && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[var(--text-secondary)]">At this pace</span>
+                        <span className="font-medium text-[var(--accent-purple)]">~{monthsLeft} months</span>
+                      </div>
+                    )}
+                    {selectedGoal.monthly_contribution > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-[var(--text-secondary)]">Monthly contribution</span>
+                        <span className="font-medium text-[var(--accent-green)]">{formatCurrency(selectedGoal.monthly_contribution)}</span>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              );
+            })()}
+
+            <div className="flex gap-2">
+              <Button variant="secondary" fullWidth onClick={() => handleDelete(selectedGoal.id)}>
+                Delete
+              </Button>
+              <Button fullWidth onClick={() => openDepositSheet(selectedGoal)}>
+                Log Deposit
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {formError && <div className="p-3 bg-[var(--accent-red)]/10 border border-[var(--accent-red)]/20 text-[var(--accent-red)] rounded-xl text-sm">{formError}</div>}
+            <Input label="Goal name" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} placeholder="Emergency Fund" required />
+            <AmountInput label="Target amount" value={formData.target_amount} onChange={(v) => setFormData({...formData, target_amount: v})} placeholder="100000" required />
+            <Input label="Saved so far (R)" type="number" value={formData.saved_amount} onChange={(e) => setFormData({...formData, saved_amount: e.target.value})} placeholder="0" />
+            <Input label="Monthly contribution (R)" type="number" value={formData.monthly_contribution} onChange={(e) => setFormData({...formData, monthly_contribution: e.target.value})} placeholder="5000" />
+            <Input label="Target date (optional)" type="date" value={formData.target_date} onChange={(e) => setFormData({...formData, target_date: e.target.value})} />
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="secondary" fullWidth onClick={() => setShowSheet(false)}>Cancel</Button>
+              <Button type="submit" fullWidth>{selectedGoal ? 'Update' : 'Create Goal'}</Button>
+            </div>
+          </form>
+        )}
+      </BottomSheet>
+
+      {/* Deposit Sheet */}
+      <BottomSheet isOpen={showDepositSheet} onClose={() => setShowDepositSheet(false)} title="Log Deposit">
+        {selectedGoal && (
+          <form onSubmit={handleDeposit} className="space-y-4">
+            <p className="text-sm text-[var(--text-secondary)] mb-4">
+              Adding to <strong className="text-[var(--text-primary)]">{selectedGoal.name}</strong> — Currently saved: {formatCurrency(selectedGoal.saved_amount)}
             </p>
-
-            <form onSubmit={handleDeposit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Deposit Amount (R)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={depositAmount}
-                  onChange={(e) => setDepositAmount(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="1000"
-                  required
-                />
-              </div>
-
-              <div className="flex space-x-3">
-                <button
-                  type="button"
-                  onClick={() => setShowDepositModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700"
-                >
-                  Log Deposit
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            <AmountInput label="Deposit amount" value={depositAmount} onChange={setDepositAmount} placeholder="1000" required />
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="secondary" fullWidth onClick={() => setShowDepositSheet(false)}>Cancel</Button>
+              <Button type="submit" fullWidth>Log Deposit</Button>
+            </div>
+          </form>
+        )}
+      </BottomSheet>
     </div>
   );
 }

@@ -1,30 +1,45 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api';
-import TransactionRow from '../components/TransactionRow';
+import Button from '../components/ui/Button';
+import Input from '../components/ui/Input';
+import Card from '../components/ui/Card';
+import Badge from '../components/ui/Badge';
+import AmountInput from '../components/ui/AmountInput';
+import BottomSheet from '../components/ui/BottomSheet';
+import Skeleton, { TransactionListSkeleton } from '../components/ui/Skeleton';
+import { useToast } from '../hooks/useToast';
 
 const CATEGORIES = ['Housing', 'Groceries', 'Transport', 'Dining out', 'Utilities', 'Subscriptions', 'Health', 'Entertainment', 'Education', 'Savings', 'Income', 'Other'];
+
+const CATEGORY_ICONS = {
+  'Housing': '🏠', 'Groceries': '🛒', 'Transport': '🚗', 'Dining out': '🍽️',
+  'Utilities': '💡', 'Subscriptions': '📱', 'Health': '💊', 'Entertainment': '🎬',
+  'Education': '📚', 'Savings': '💰', 'Income': '💵', 'Other': '📦',
+};
+
+const CATEGORY_COLORS = {
+  'Housing': '#4D9FFF', 'Groceries': '#00C896', 'Transport': '#FFAB2E',
+  'Dining out': '#FF6B6B', 'Utilities': '#9B7FFF', 'Subscriptions': '#FF8ED4',
+  'Health': '#FF5C5C', 'Entertainment': '#F7AEF8', 'Education': '#74B9FF',
+  'Savings': '#00C896', 'Income': '#00C896', 'Other': '#8B92A5',
+};
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [showSheet, setShowSheet] = useState(false);
   const [editingTx, setEditingTx] = useState(null);
   const [filterCategory, setFilterCategory] = useState('');
   const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [searchQuery, setSearchQuery] = useState('');
+  const { addToast } = useToast();
 
-  // Form state
   const [formData, setFormData] = useState({
-    name: '',
-    amount: '',
-    category: 'Groceries',
-    date: new Date().toISOString().split('T')[0],
-    notes: ''
+    name: '', amount: '', category: 'Groceries', date: new Date().toISOString().split('T')[0], notes: ''
   });
   const [formError, setFormError] = useState('');
 
-  useEffect(() => {
-    fetchTransactions();
-  }, [filterMonth]);
+  useEffect(() => { fetchTransactions(); }, [filterMonth]);
 
   async function fetchTransactions() {
     try {
@@ -37,20 +52,14 @@ export default function Transactions() {
     }
   }
 
-  function openAddModal() {
+  function openAddSheet() {
     setEditingTx(null);
-    setFormData({
-      name: '',
-      amount: '',
-      category: 'Groceries',
-      date: new Date().toISOString().split('T')[0],
-      notes: ''
-    });
+    setFormData({ name: '', amount: '', category: 'Groceries', date: new Date().toISOString().split('T')[0], notes: '' });
     setFormError('');
-    setShowModal(true);
+    setShowSheet(true);
   }
 
-  function openEditModal(tx) {
+  function openEditSheet(tx) {
     setEditingTx(tx);
     setFormData({
       name: tx.name,
@@ -60,7 +69,7 @@ export default function Transactions() {
       notes: tx.notes || ''
     });
     setFormError('');
-    setShowModal(true);
+    setShowSheet(true);
   }
 
   async function handleSubmit(e) {
@@ -78,21 +87,17 @@ export default function Transactions() {
       return;
     }
 
-    const payload = {
-      name: formData.name,
-      amount: amount,
-      category: formData.category,
-      date: formData.date,
-      notes: formData.notes || null
-    };
+    const payload = { name: formData.name, amount, category: formData.category, date: formData.date, notes: formData.notes || null };
 
     try {
       if (editingTx) {
         await api.put(`/transactions/${editingTx.id}`, payload);
+        addToast('Transaction updated', 'success');
       } else {
         await api.post('/transactions', payload);
+        addToast('Transaction added', 'success');
       }
-      setShowModal(false);
+      setShowSheet(false);
       fetchTransactions();
     } catch (err) {
       setFormError(err.response?.data?.error || 'Failed to save transaction.');
@@ -100,198 +105,301 @@ export default function Transactions() {
   }
 
   async function handleDelete(id) {
-    if (!window.confirm('Are you sure you want to delete this transaction?')) return;
     try {
       await api.delete(`/transactions/${id}`);
+      addToast('Transaction deleted', 'info');
       fetchTransactions();
     } catch (err) {
       console.error('Failed to delete transaction:', err);
     }
   }
 
-  const filtered = filterCategory
-    ? transactions.filter(t => t.category === filterCategory)
-    : transactions;
+  const filtered = transactions.filter(t => {
+    if (filterCategory && t.category !== filterCategory) return false;
+    if (searchQuery && !t.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    return true;
+  });
+
+  // Group by date
+  const grouped = {};
+  filtered.forEach(t => {
+    const dateKey = t.date;
+    if (!grouped[dateKey]) grouped[dateKey] = { transactions: [], total: 0 };
+    grouped[dateKey].transactions.push(t);
+    grouped[dateKey].total += Number(t.amount);
+  });
 
   const monthlyTotal = filtered.reduce((sum, t) => sum + Number(t.amount), 0);
-  const formatCurrency = (amount) => {
-    return 'R' + Math.abs(amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatCurrency = (amount) => 'R' + Math.abs(amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatDate = (dateStr) => {
+    const d = new Date(dateStr);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (d.toDateString() === today.toDateString()) return 'Today';
+    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long' });
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 lg:pb-8">
+        <Skeleton variant="title" className="mb-6" />
+        <TransactionListSkeleton />
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 lg:pb-8">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6 animate-on-mount">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Transactions</h1>
+          <p className="text-sm text-[var(--text-secondary)]">{filtered.length} transactions this month</p>
+        </div>
+      </div>
+
+      {/* Month Selector */}
+      <div className="flex items-center justify-between mb-4">
         <button
-          onClick={openAddModal}
-          className="mt-3 sm:mt-0 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
+          onClick={() => {
+            const d = new Date(filterMonth + '-01');
+            d.setMonth(d.getMonth() - 1);
+            setFilterMonth(d.toISOString().slice(0, 7));
+          }}
+          className="p-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors"
+          aria-label="Previous month"
         >
-          <span>+</span>
-          <span>Add Transaction</span>
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+        </button>
+        <span className="text-lg font-semibold text-[var(--text-primary)]">
+          {new Date(filterMonth + '-01').toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })}
+        </span>
+        <button
+          onClick={() => {
+            const d = new Date(filterMonth + '-01');
+            d.setMonth(d.getMonth() + 1);
+            setFilterMonth(d.toISOString().slice(0, 7));
+          }}
+          className="p-2 rounded-xl text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors"
+          aria-label="Next month"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3 mb-6">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Month</label>
-          <input
-            type="month"
-            value={filterMonth}
-            onChange={(e) => setFilterMonth(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+      {/* Search */}
+      <div className="relative mb-4">
+        <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-secondary)] pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search transactions..."
+          className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-[var(--bg-tertiary)] border-2 border-transparent focus:border-[var(--accent-green)] text-[var(--text-primary)] text-sm outline-none transition-colors placeholder:text-[var(--text-secondary)] placeholder:opacity-50"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            aria-label="Clear search"
           >
-            <option value="">All Categories</option>
-            {CATEGORIES.map(c => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-        </div>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {/* Category Filters */}
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-none">
+        <button
+          onClick={() => setFilterCategory('')}
+          className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+            !filterCategory ? 'bg-[var(--accent-green)] text-[#0D0F14]' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          All
+        </button>
+        {CATEGORIES.map(cat => (
+          <button
+            key={cat}
+            onClick={() => setFilterCategory(cat === filterCategory ? '' : cat)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+              filterCategory === cat ? 'bg-[var(--accent-green)] text-[#0D0F14]' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            {CATEGORY_ICONS[cat]} {cat}
+          </button>
+        ))}
       </div>
 
       {/* Monthly Total */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mb-4">
+      <Card className="mb-4">
         <div className="flex items-center justify-between">
-          <span className="text-gray-600 font-medium">Monthly Total</span>
-          <span className={`text-xl font-bold ${monthlyTotal >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <span className="text-sm font-medium text-[var(--text-secondary)]">Monthly total</span>
+          <span className={`text-xl font-bold tabular-nums ${monthlyTotal >= 0 ? 'text-[var(--accent-green)]' : 'text-[var(--accent-red)]'}`}>
             {monthlyTotal >= 0 ? '+' : '-'}{formatCurrency(monthlyTotal)}
           </span>
         </div>
-      </div>
+      </Card>
 
       {/* Transaction List */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-        <div className="divide-y divide-gray-100">
-          {filtered.map((tx) => (
-            <TransactionRow
-              key={tx.id}
-              transaction={tx}
-              onEdit={openEditModal}
-              onDelete={handleDelete}
-            />
-          ))}
-          {filtered.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-gray-500">No transactions found</p>
-              <button onClick={openAddModal} className="mt-2 text-blue-600 hover:text-blue-700 font-medium">
-                Add your first transaction
-              </button>
+      <div className="space-y-6">
+        {Object.entries(grouped).length > 0 ? Object.entries(grouped).sort(([a], [b]) => b.localeCompare(a)).map(([dateKey, group]) => (
+          <div key={dateKey}>
+            <div className="sticky top-0 z-10 bg-[var(--bg-primary)] py-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wider">
+                  {formatDate(dateKey)}
+                </span>
+                <span className={`text-xs font-medium tabular-nums ${group.total >= 0 ? 'text-[var(--accent-green)]' : 'text-[var(--accent-red)]'}`}>
+                  {group.total >= 0 ? '+' : ''}{formatCurrency(group.total)}
+                </span>
+              </div>
             </div>
-          )}
-        </div>
+            <div className="space-y-1">
+              {group.transactions.map((tx, i) => (
+                <div
+                  key={tx.id}
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-[var(--bg-tertiary)] transition-colors group"
+                  style={{ animation: `fadeInUp 300ms ease-out ${i * 30}ms both` }}
+                >
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0"
+                    style={{ backgroundColor: (CATEGORY_COLORS[tx.category] || '#8B92A5') + '20' }}
+                  >
+                    {CATEGORY_ICONS[tx.category] || '📦'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[var(--text-primary)] truncate">{tx.name}</p>
+                    <p className="text-xs text-[var(--text-secondary)]">{tx.category}</p>
+                  </div>
+                  <span className={`text-sm font-semibold tabular-nums flex-shrink-0 ${tx.amount > 0 ? 'text-[var(--accent-green)]' : 'text-[var(--text-primary)]'}`}>
+                    {tx.amount > 0 ? '+' : ''}{formatCurrency(tx.amount)}
+                  </span>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => openEditSheet(tx)}
+                      className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent-blue)] hover:bg-[var(--bg-tertiary)] transition-colors"
+                      aria-label="Edit transaction"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleDelete(tx.id)}
+                      className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent-red)] hover:bg-[var(--bg-tertiary)] transition-colors"
+                      aria-label="Delete transaction"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )) : (
+          <div className="flex flex-col items-center py-16 text-center">
+            <div className="w-20 h-20 rounded-3xl bg-[var(--bg-tertiary)] flex items-center justify-center mb-4 text-3xl">
+              📭
+            </div>
+            <p className="text-lg font-medium text-[var(--text-primary)] mb-1">No transactions found</p>
+            <p className="text-sm text-[var(--text-secondary)] mb-4">
+              {searchQuery ? 'Try a different search term' : 'Add your first transaction to get started'}
+            </p>
+            <Button onClick={openAddSheet}>Add transaction</Button>
+          </div>
+        )}
       </div>
 
-      {/* Add/Edit Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
-              {editingTx ? 'Edit Transaction' : 'Add Transaction'}
-            </h2>
+      {/* FAB */}
+      <button
+        onClick={openAddSheet}
+        className="fixed bottom-20 lg:bottom-8 right-6 z-40 w-14 h-14 rounded-2xl bg-[var(--accent-green)] text-[#0D0F14] shadow-[var(--shadow-glow-green)] flex items-center justify-center hover:scale-105 active:scale-95 transition-all duration-200"
+        aria-label="Add transaction"
+      >
+        <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
+        </svg>
+      </button>
 
-            {formError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
-                {formError}
-              </div>
-            )}
+      {/* Bottom Sheet */}
+      <BottomSheet isOpen={showSheet} onClose={() => setShowSheet(false)} title={editingTx ? 'Edit Transaction' : 'Add Transaction'}>
+        {formError && (
+          <div className="mb-4 p-3 bg-[var(--accent-red)]/10 border border-[var(--accent-red)]/20 text-[var(--accent-red)] rounded-xl text-sm">{formError}</div>
+        )}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Input
+            label="Transaction name"
+            value={formData.name}
+            onChange={(e) => setFormData({...formData, name: e.target.value})}
+            placeholder="Grocery store"
+            required
+          />
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({...formData, name: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="Transaction name"
-                  required
-                />
-              </div>
+          <AmountInput
+            label="Amount (negative for expense)"
+            value={formData.amount}
+            onChange={(v) => setFormData({...formData, amount: v})}
+            placeholder="0.00"
+            required
+          />
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Amount <span className="text-gray-500">(negative for expense)</span>
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.amount}
-                  onChange={(e) => setFormData({...formData, amount: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="-1000 for expense, 5000 for income"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({...formData, category: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                >
-                  {CATEGORIES.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <input
-                  type="date"
-                  value={formData.date}
-                  onChange={(e) => setFormData({...formData, date: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-                <textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({...formData, notes: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                  rows={2}
-                  placeholder="Optional notes"
-                />
-              </div>
-
-              <div className="flex space-x-3 pt-2">
+          <div>
+            <p className="text-sm font-medium text-[var(--text-secondary)] mb-2">Category</p>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORIES.map(cat => (
                 <button
+                  key={cat}
                   type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors"
+                  onClick={() => setFormData({...formData, category: cat})}
+                  className={`px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                    formData.category === cat
+                      ? 'bg-[var(--accent-green)] text-[#0D0F14]'
+                      : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                  }`}
                 >
-                  Cancel
+                  {CATEGORY_ICONS[cat]} {cat}
                 </button>
-                <button
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  {editingTx ? 'Update' : 'Add Transaction'}
-                </button>
-              </div>
-            </form>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+
+          <Input
+            label="Date"
+            type="date"
+            value={formData.date}
+            onChange={(e) => setFormData({...formData, date: e.target.value})}
+          />
+
+          <Input
+            label="Notes (optional)"
+            value={formData.notes}
+            onChange={(e) => setFormData({...formData, notes: e.target.value})}
+            placeholder="Any additional details"
+          />
+
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="secondary" fullWidth onClick={() => setShowSheet(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" fullWidth>
+              {editingTx ? 'Update' : 'Add Transaction'}
+            </Button>
+          </div>
+        </form>
+      </BottomSheet>
     </div>
   );
 }
