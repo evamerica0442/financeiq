@@ -4,6 +4,8 @@ const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const path = require('path');
 
+const pool = require('./db');
+
 const authRoutes = require('./routes/auth');
 const transactionRoutes = require('./routes/transactions');
 const budgetRoutes = require('./routes/budgets');
@@ -84,6 +86,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`FinanceIQ server running on port ${PORT}`);
+// Wait for DB migrations to finish before listening for requests
+const { waitForMigrations } = require('./db');
+waitForMigrations().then(() => {
+  app.listen(PORT, () => {
+    console.log(`FinanceIQ server running on port ${PORT}`);
+  });
 });
