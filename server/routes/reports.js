@@ -19,15 +19,17 @@ router.get('/group-spending', async (req, res) => {
     const { month } = req.query;
     const userId = req.user.id;
 
-    // Get all groups
+    // Get all groups for THIS user only
     const groupsResult = await pool.query(
-      'SELECT id, name, icon, color FROM category_groups ORDER BY sort_order, name'
+      'SELECT id, name, icon, color FROM category_groups WHERE user_id = $1 ORDER BY sort_order, name',
+      [userId]
     );
     const groups = groupsResult.rows;
 
-    // Get all categories with their group mapping
+    // Get all categories with their group mapping for THIS user only
     const catResult = await pool.query(
-      'SELECT name, group_id FROM categories'
+      'SELECT c.name, c.group_id FROM categories c JOIN category_groups g ON c.group_id = g.id WHERE c.user_id = $1',
+      [userId]
     );
     const catToGroup = {};
     for (const row of catResult.rows) {

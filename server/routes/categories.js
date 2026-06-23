@@ -284,42 +284,29 @@ router.delete('/groups/:id', async (req, res) => {
   }
 });
 
-// ─── DELETE /api/categories/:id — soft-delete (archive) a category
+// ─── DELETE /api/categories/:id — archive a category for the user
+// If the category has existing transactions, they are left unchanged
+// (the category name is preserved in the transaction record).
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { reassignToCategoryId } = req.body;
+    const userId = req.user.id;
 
-    // Verify ownership
+    // Verify the category belongs to this user
     const catCheck = await pool.query(
-      'SELECT id, name FROM categories WHERE id = $1 AND user_id = $2',
-      [id, req.user.id]
+      'SELECT id FROM categories WHERE id = $1 AND user_id = $2',
+      [id, userId]
     );
     if (catCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Category not found.' });
     }
 
-    // If reassign requested, move transactions before archiving
-    if (reassignToCategoryId) {
-      const targetCheck = await pool.query(
-        'SELECT id FROM categories WHERE id = $1 AND user_id = $2',
-        [reassignToCategoryId, req.user.id]
-      );
-      if (targetCheck.rows.length === 0) {
-        return res.status(404).json({ error: 'Target category not found.' });
-      }
-      await pool.query(
-        'UPDATE transactions SET category_id = $1 WHERE category_id = $2 AND user_id = $3',
-        [reassignToCategoryId, id, req.user.id]
-      );
-    }
-
-    // Soft-delete by setting is_active = FALSE
+    // Soft-delete: mark as inactive just for THIS user.
+    // Other users who also use this system-level category are unaffected.
     await pool.query(
-      'UPDATE categories SET is_active = FALSE WHERE id = $1 AND user_id = $2',
-      [id, req.user.id]
+      'UPDATE categories SET is_active = FALSE, updated_at = NOW() WHERE id = $1 AND user_id = $2',
+      [id, userId]
     );
-
     res.json({ message: 'Category archived successfully.' });
   } catch (err) {
     console.error('Delete category error:', err);
