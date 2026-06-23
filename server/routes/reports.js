@@ -2,6 +2,13 @@ const express = require('express');
 const pool = require('../db');
 const authMiddleware = require('../middleware/authMiddleware');
 
+/**
+ * CSV export route for monthly reports.
+ * Primary format is CSV (opens fine in Excel/Google Sheets).
+ * Transform helper converts transaction rows to CSV-compatible format.
+ */
+const { Parser } = require('json2csv');
+
 const router = express.Router();
 router.use(authMiddleware);
 
@@ -156,6 +163,68 @@ router.get('/monthly-summary', async (req, res) => {
   } catch (err) {
     console.error('Monthly summary error:', err);
     res.status(500).json({ error: 'Failed to generate monthly summary.' });
+  }
+});
+
+/**
+ * GET /api/reports/monthly/export?format=csv&month=YYYY-MM
+ * Exports monthly report data as a downloadable CSV file.
+ * Fields: Date, Description, Category, Type, Amount
+ */
+router.get('/monthly/export', async (req, res) => {
+  try {
+    const { month, format } = req.query;
+    const userId = req.user.id;
+    const targetMonth = month || new Date().toISOString().slice(0, 7);
+
+    // Fetch all transactions for the month (non-future only)
+    const txResult = await pool.query(
+      `SELECT date, name, category,
+              CASE WHEN amount > 0 THEN 'income' ELSE 'expense' END as type,
+              ABS(amount) as amount,
+              notes
+       FROM transactions
+       WHERE user_id = $1
+         AND to_char(date, 'YYYY-MM') = $2
+         AND (is_future IS NULL OR is_future = false)
+       ORDER BY date DESC, id DESC`,
+      [userId, targetMonth]
+    );
+
+    const rows = txResult.rows.map(r => ({
+      Date: r.date instanceof Date ? r.date.toISOString().split('T')[0] : String(r.date),
+      Description: r.name,
+      Category: r.category,
+      Type: r.type,
+      Amount: parseFloat(r.amount).toFixed(2),
+      Notes: r.notes || '',
+    }));
+
+    if (format === 'xls') {
+      // XLS support: send as tab-separated values (TSV) with .xls extension
+      // Most spreadsheet apps open TSV as Excel-compatible
+      const header = 'Date\tDescription\tCategory\tType\tAmount\tNotes\n';
+      const body = rows.map(r =>
+        [r.Date, r.Description, r.Category, r.Type, r.Amount, r.Notes].join('\t')
+      ).join('\n');
+
+      res.setHeader('Content-Type', 'application/vnd.ms-excel');
+      res.setHeader('Content-Disposition', `attachment; filename="monthly-report-${targetMonth}.xls"`);
+      return res.send(header + body);
+    }
+
+    // Default: CSV
+    const csvParser = new Parser({
+      fields: ['Date', 'Description', 'Category', 'Type', 'Amount', 'Notes'],
+    });
+    const csv = csvParser.parse(rows);
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="monthly-report-${targetMonth}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    console.error('Export report error:', err);
+    res.status(500).json({ error: 'Failed to export report.' });
   }
 });
 
