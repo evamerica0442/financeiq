@@ -4,7 +4,7 @@
   "description": "FinanceIQ - Personal Finance App",
   "main": "server/index.js",
   "scripts": {
-    "build": "npm install --prefix client && npm run build --prefix client && node -e \"const fs=require('fs'); const p='client/dist'; console.log('Build output:', fs.existsSync(p)?'exists':'missing')\"",
+    "build": "npm install --prefix client && npm run build --prefix client && node -e \"const fs=require('fs'); const src='client/dist'; const dest='build'; if(fs.existsSync(src)){if(fs.existsSync(dest))fs.rmSync(dest,{recursive:true}); fs.cpSync(src,dest,{recursive:true}); console.log('Build output:',dest);}else{console.log('Build output: missing'); process.exit(1);}\"",
     "start": "node server/index.js",
     "dev": "concurrently \"node server/index.js\" \"cd client && npm run dev\"",
     "seed": "node server/db/seed.js"
