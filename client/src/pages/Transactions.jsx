@@ -23,17 +23,56 @@ export default function Transactions() {
   const { categories, loading: catLoading, getCategoryIcon, getCategoryColor, groups, getCategoryGroup } = useCategories();
 
   const [showImport, setShowImport] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const [exportingXls, setExportingXls] = useState(false);
 
   const [formData, setFormData] = useState({
     name: '', amount: '', category: '', category_id: null, date: new Date().toISOString().split('T')[0], notes: '', is_future: false
   });
   const [formError, setFormError] = useState('');
 
-  const handleExport = () => {
-    setExporting(true);
-    window.open(`/api/export/report?month=${filterMonth}`, '_blank');
-    setTimeout(() => setExporting(false), 2000);
+  const handleExportCsv = async () => {
+    setExportingCsv(true);
+    try {
+      const response = await api.get(`/reports/monthly/export?format=csv&month=${filterMonth}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `transactions-${filterMonth}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export CSV', err);
+    } finally {
+      setExportingCsv(false);
+    }
+  };
+
+  const handleExportXls = async () => {
+    setExportingXls(true);
+    try {
+      const response = await api.get(`/reports/monthly/export?format=xls&month=${filterMonth}`, {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], { type: 'application/vnd.ms-excel' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `transactions-${filterMonth}.xls`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export XLS', err);
+    } finally {
+      setExportingXls(false);
+    }
   };
 
   useEffect(() => { fetchTransactions(); }, [filterMonth, showFuture]);
@@ -201,26 +240,48 @@ export default function Transactions() {
             <span className="hidden sm:inline">{showFuture ? 'Actual' : 'Future'}</span>
           </button>
 
-          {/* Export PDF */}
+          {/* Export CSV */}
           <button
-            onClick={handleExport}
-            disabled={exporting}
+            onClick={handleExportCsv}
+            disabled={exportingCsv}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 hover:scale-105 active:scale-95"
             style={{
               backgroundColor: 'var(--bg-tertiary)',
               color: 'var(--text-secondary)',
-              opacity: exporting ? 0.6 : 1,
+              opacity: exportingCsv ? 0.6 : 1,
             }}
-            title="Export monthly report as PDF"
+            title="Export as CSV"
           >
-            {exporting ? (
+            {exportingCsv ? (
               <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--accent-green)', borderTopColor: 'transparent' }} />
             ) : (
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
             )}
-            <span className="hidden sm:inline">Export PDF</span>
+            <span className="hidden sm:inline">CSV</span>
+          </button>
+
+          {/* Export XLS */}
+          <button
+            onClick={handleExportXls}
+            disabled={exportingXls}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 hover:scale-105 active:scale-95"
+            style={{
+              backgroundColor: 'var(--accent-green)',
+              color: '#0D0F14',
+              opacity: exportingXls ? 0.6 : 1,
+            }}
+            title="Export as Excel"
+          >
+            {exportingXls ? (
+              <div className="w-4 h-4 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: '#0D0F14', borderTopColor: 'transparent' }} />
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            )}
+            <span className="hidden sm:inline">XLS</span>
           </button>
 
           {/* Import */}
