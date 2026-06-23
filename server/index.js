@@ -35,9 +35,8 @@ app.use('/api/ai', aiRoutes);
 // Serve React build in production
 if (process.env.NODE_ENV === 'production') {
   const possiblePaths = [
-    path.resolve(process.cwd(), 'build'),
-    path.join(__dirname, '../build'),
-    path.join(__dirname, '../../build'),
+    path.join(__dirname, '../client/build'),
+    path.resolve(process.cwd(), 'client/build'),
   ];
 
   let clientDistPath = null;
