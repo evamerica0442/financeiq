@@ -64,6 +64,7 @@ export default function Dashboard() {
   const [txns, setTxns] = useState([]);
   const [budgets, setBudgets] = useState([]);
   const [assets, setAssets] = useState([]);
+  const [allTxns, setAllTxns] = useState([]); // 6 months of transactions for bar chart
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -71,7 +72,7 @@ export default function Dashboard() {
   const [analysisMonth, setAnalysisMonth] = useState(new Date().toISOString().slice(0, 7));
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const chartRef = useRef(null);
-  const { categories, getCategoryIcon, getCategoryColor, groups } = useCategories();
+  const { categories, loading: catLoading, getCategoryIcon, getCategoryColor, groups } = useCategories();
 
   const currentMonth = new Date().toISOString().slice(0, 7);
 
@@ -85,14 +86,16 @@ export default function Dashboard() {
 
   async function fetchData() {
     try {
-      const [txRes, bRes, aRes] = await Promise.all([
+      const [txRes, bRes, aRes, allTxRes] = await Promise.all([
         api.get('/transactions?month=' + currentMonth),
         api.get('/budgets'),
         api.get('/networth'),
+        api.get('/transactions?status=all'), // all transactions for 6-month chart
       ]);
       setTxns(txRes.data);
       setBudgets(bRes.data);
       setAssets(aRes.data);
+      setAllTxns(allTxRes.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   }
@@ -123,18 +126,18 @@ export default function Dashboard() {
   }, [analysisMonth, fetchGroupAnalysis]);
 
   // ── Derived data ────────────────────────────────────────────────────────────
-  const income = txns.filter(t => t.amount > 0).reduce((s, t) => s + Number(t.amount), 0);
-  const spent = txns.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+  const income = txns.filter(t => Number(t.amount) > 0).reduce((s, t) => s + Number(t.amount), 0);
+  const spent = txns.filter(t => Number(t.amount) < 0).reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
   const saved = income - spent;
 
   const totAssets = assets.filter(a => a.type === 'asset').reduce((s, a) => s + Number(a.value), 0);
   const totLiabs = assets.filter(a => a.type === 'liability').reduce((s, a) => s + Math.abs(Number(a.value)), 0);
   const netWorth = totAssets - totLiabs;
-  const netDelta = netWorth > 0 ? (((netWorth - netWorth * 0.983) / (netWorth * 0.983)) * 100) : 0;
+  const netDelta = netWorth > 0 ? (((netWorth - (totAssets * 0.983 - totLiabs)) / (totAssets * 0.983 - totLiabs)) * 100) : 0;
 
-  // spending by category (expenses only)
+  // spending by category (expenses only) for donut
   const byCat = {};
-  txns.filter(t => t.amount < 0).forEach(t => {
+  txns.filter(t => Number(t.amount) < 0).forEach(t => {
     byCat[t.category] = (byCat[t.category] || 0) + Math.abs(Number(t.amount));
   });
   const catEntries = Object.entries(byCat).sort(([, a], [, b]) => b - a);
@@ -165,9 +168,27 @@ export default function Dashboard() {
     animation: { animateRotate: true, duration: 600 },
   };
 
-  // 6-month bar chart (approximate from current data)
+  // ── Real 6-month bar chart (aggregated from all transactions) ──────────
   const months = [];
-  for (let i = 5; i >= 0; i--) { const d = new Date(); d.setMonth(d.getMonth() - i); months.push(d.toISOString().slice(0, 7)); }
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date();
+    d.setMonth(d.getMonth() - i);
+    months.push(d.toISOString().slice(0, 7));
+  }
+
+  // Aggregate all transactions by month for income and spending
+  const monthlyIncome = {};
+  const monthlySpending = {};
+  allTxns.forEach(t => {
+    const txMonth = t.date ? t.date.substring(0, 7) : null;
+    if (!txMonth) return;
+    const amt = Number(t.amount);
+    if (amt > 0) {
+      monthlyIncome[txMonth] = (monthlyIncome[txMonth] || 0) + amt;
+    } else if (amt < 0) {
+      monthlySpending[txMonth] = (monthlySpending[txMonth] || 0) + Math.abs(amt);
+    }
+  });
 
   const barData = {
     labels: months.map(m => {
@@ -177,15 +198,17 @@ export default function Dashboard() {
     datasets: [
       {
         label: 'Income',
-        data: months.map(() => +(income * (0.85 + Math.random() * 0.3)).toFixed(0)),
+        data: months.map(m => monthlyIncome[m] || 0),
         backgroundColor: 'rgba(0,200,150,0.55)',
-        borderRadius: 4, borderSkipped: false,
+        borderRadius: 4,
+        borderSkipped: false,
       },
       {
         label: 'Spending',
-        data: months.map(() => +(spent * (0.85 + Math.random() * 0.3)).toFixed(0)),
+        data: months.map(m => monthlySpending[m] || 0),
         backgroundColor: 'rgba(255,92,92,0.55)',
-        borderRadius: 4, borderSkipped: false,
+        borderRadius: 4,
+        borderSkipped: false,
       },
     ],
   };
@@ -196,7 +219,10 @@ export default function Dashboard() {
     plugins: {
       legend: {
         display: true, position: 'top', align: 'end',
-        labels: { color: '#8B92A5', boxWidth: 10, boxHeight: 10, padding: 16, usePointStyle: true, pointStyle: 'circle', font: { size: 12, family: 'Inter' } },
+        labels: {
+          color: '#8B92A5', boxWidth: 10, boxHeight: 10, padding: 16,
+          usePointStyle: true, pointStyle: 'circle', font: { size: 12, family: 'Inter' },
+        },
       },
       tooltip: {
         backgroundColor: '#1E2330', titleColor: '#F0F2F7', bodyColor: '#8B92A5',
@@ -208,7 +234,10 @@ export default function Dashboard() {
       x: { grid: { display: false }, ticks: { color: '#8B92A5', font: { size: 11, family: 'Inter' } } },
       y: {
         grid: { color: 'rgba(139,146,165,0.08)', drawBorder: false },
-        ticks: { color: '#8B92A5', font: { size: 11, family: 'Inter' }, callback: (v) => 'R' + (v / 1000).toFixed(0) + 'k' },
+        ticks: {
+          color: '#8B92A5', font: { size: 11, family: 'Inter' },
+          callback: (v) => 'R' + (v / 1000).toFixed(0) + 'k',
+        },
       },
     },
   };
@@ -229,9 +258,23 @@ export default function Dashboard() {
   // Top 3 summary
   const top3 = groupAnalysis?.groups?.slice(0, 3) || [];
 
-  if (loading) return <DashSkeleton />;
+  // Wait for categories to load too before showing non-skeleton content
+  if (loading || catLoading) return <DashSkeleton />;
 
   const recent = txns.slice(0, 5);
+
+  // Recalculate netDelta properly from previous month
+  const previousMonth = new Date();
+  previousMonth.setMonth(previousMonth.getMonth() - 1);
+  const prevMonthKey = previousMonth.toISOString().slice(0, 7);
+  const prevIncome = allTxns
+    .filter(t => t.date && t.date.substring(0, 7) === prevMonthKey && Number(t.amount) > 0)
+    .reduce((s, t) => s + Number(t.amount), 0);
+  const prevSpent = allTxns
+    .filter(t => t.date && t.date.substring(0, 7) === prevMonthKey && Number(t.amount) < 0)
+    .reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+  const prevSaved = prevIncome - prevSpent;
+  const netDeltaCalc = prevSaved !== 0 ? ((saved - prevSaved) / Math.abs(prevSaved)) * 100 : 0;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 lg:pb-8 space-y-6">
@@ -259,11 +302,11 @@ export default function Dashboard() {
                 decimals={0}
                 className="text-4xl sm:text-5xl font-bold text-[#F0F2F7]"
               />
-              <span className={`inline-flex items-center gap-1 text-sm font-medium ${netDelta >= 0 ? 'text-[#00C896]' : 'text-[#FF5C5C]'}`}>
-                <svg className={`w-4 h-4 ${netDelta >= 0 ? '' : 'rotate-180'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <span className={`inline-flex items-center gap-1 text-sm font-medium ${netDeltaCalc >= 0 ? 'text-[#00C896]' : 'text-[#FF5C5C]'}`}>
+                <svg className={`w-4 h-4 ${netDeltaCalc >= 0 ? '' : 'rotate-180'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 10l7-7m0 0l7 7m-7-7v18" />
                 </svg>
-                {netDelta >= 0 ? '+' : ''}{netDelta.toFixed(1)}%
+                {netDeltaCalc >= 0 ? '+' : ''}{netDeltaCalc.toFixed(1)}%
               </span>
             </div>
             <div className="flex flex-wrap gap-2 mt-4">
@@ -465,7 +508,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Bar chart */}
+        {/* Real 6-month Bar chart */}
         <div className="lg:col-span-1 rounded-2xl border border-[#2A2F3E] bg-[#161A23] shadow-[0_2px_12px_rgba(0,0,0,0.4)] overflow-hidden">
           <div className="p-6 pb-2">
             <h3 className="text-sm font-semibold text-[#F0F2F7]">Monthly cash flow</h3>
