@@ -75,6 +75,8 @@ export default function Dashboard() {
   const [allTxns, setAllTxns] = useState([]); // 6 months of transactions for bar chart
   const [insights, setInsights] = useState(null);
   const [networthInsights, setNetworthInsights] = useState(null);
+  const [netWorthSummary, setNetWorthSummary] = useState(null);
+  const [nwSummaryLoading, setNwSummaryLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [groupAnalysis, setGroupAnalysis] = useState(null);
@@ -93,6 +95,7 @@ export default function Dashboard() {
 
   useEffect(() => { fetchData(); }, []);
   useEffect(() => { fetchNetworthInsights(); }, []);
+  useEffect(() => { fetchNetWorthSummary(); }, []);
 
   async function fetchData() {
     try {
@@ -100,7 +103,7 @@ export default function Dashboard() {
         api.get('/transactions?month=' + currentMonth),
         api.get('/budgets'),
         api.get('/networth'),
-        api.get('/transactions?status=all'), // all transactions for 6-month chart
+        api.get('/transactions?status=all'),
       ]);
       setTxns(txRes.data);
       setBudgets(bRes.data);
@@ -108,6 +111,19 @@ export default function Dashboard() {
       setAllTxns(allTxRes.data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
+  }
+
+  async function fetchNetWorthSummary() {
+    try {
+      setNwSummaryLoading(true);
+      const res = await api.get('/networth/summary');
+      setNetWorthSummary(res.data);
+    } catch (e) {
+      console.error('Failed to fetch net worth summary:', e);
+      setNetWorthSummary(null);
+    } finally {
+      setNwSummaryLoading(false);
+    }
   }
 
   async function fetchNetworthInsights() {
@@ -149,10 +165,10 @@ export default function Dashboard() {
   const spent = txns.filter(t => Number(t.amount) < 0).reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
   const saved = income - spent;
 
-  const totAssets = assets.filter(a => a.type === 'asset').reduce((s, a) => s + Number(a.value), 0);
-  const totLiabs = assets.filter(a => a.type === 'liability').reduce((s, a) => s + Math.abs(Number(a.value)), 0);
-  const netWorth = totAssets - totLiabs;
-  const netDelta = netWorth > 0 ? (((netWorth - (totAssets * 0.983 - totLiabs)) / (totAssets * 0.983 - totLiabs)) * 100) : 0;
+  // Net worth from backend via /networth/summary (single source of truth)
+  const netWorth = netWorthSummary?.netWorth ?? 0;
+  const totAssets = netWorthSummary?.totalAssets ?? 0;
+  const totLiabs = netWorthSummary?.totalLiabilities ?? 0;
 
   // spending by category (expenses only) for donut
   const byCat = {};
