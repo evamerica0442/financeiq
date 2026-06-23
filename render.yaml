@@ -2,7 +2,6 @@ services:
   - type: web
     name: financeiq
     runtime: node
-    publishDir: build
     buildCommand: npm install --no-audit --no-fund && cd client && npm install --no-audit --no-fund && npm run build && cd .. && test -d build && echo "Frontend build succeeded" || (echo "Frontend build failed" && exit 1)
     startCommand: npm start
     envVars:
