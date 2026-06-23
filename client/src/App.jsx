@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ThemeProvider } from './hooks/useTheme';
 import { ToastProvider } from './hooks/useToast';
+import { CategoriesProvider } from './hooks/useCategories';
 import Sidebar from './components/Sidebar';
 import MobileNav from './components/MobileNav';
 import Skeleton, { DashboardSkeleton } from './components/ui/Skeleton';
@@ -14,6 +15,8 @@ import Budgets from './pages/Budgets';
 import Goals from './pages/Goals';
 import NetWorth from './pages/NetWorth';
 import AIAdvisor from './pages/AIAdvisor';
+import Categories from './pages/Categories';
+import Reports from './pages/Reports';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -67,6 +70,8 @@ function AppContent() {
             <Route path="/budgets" element={<ProtectedRoute><Budgets /></ProtectedRoute>} />
             <Route path="/goals" element={<ProtectedRoute><Goals /></ProtectedRoute>} />
             <Route path="/networth" element={<ProtectedRoute><NetWorth /></ProtectedRoute>} />
+            <Route path="/categories" element={<ProtectedRoute><Categories /></ProtectedRoute>} />
+            <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
             <Route path="/advisor" element={<ProtectedRoute><AIAdvisor /></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
@@ -82,7 +87,9 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <ToastProvider>
-          <AppContent />
+          <CategoriesProvider>
+            <AppContent />
+          </CategoriesProvider>
         </ToastProvider>
       </AuthProvider>
     </ThemeProvider>

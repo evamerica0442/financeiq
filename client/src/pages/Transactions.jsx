@@ -8,21 +8,7 @@ import AmountInput from '../components/ui/AmountInput';
 import Skeleton, { TransactionListSkeleton } from '../components/ui/Skeleton';
 import ImportModal from '../components/ImportModal';
 import { useToast } from '../hooks/useToast';
-
-const CATEGORIES = ['Housing', 'Groceries', 'Transport', 'Dining out', 'Utilities', 'Subscriptions', 'Health', 'Entertainment', 'Education', 'Savings', 'Income', 'Other'];
-
-const CATEGORY_ICONS = {
-  'Housing': '🏠', 'Groceries': '🛒', 'Transport': '🚗', 'Dining out': '🍽️',
-  'Utilities': '💡', 'Subscriptions': '📱', 'Health': '💊', 'Entertainment': '🎬',
-  'Education': '📚', 'Savings': '💰', 'Income': '💵', 'Other': '📦',
-};
-
-const CATEGORY_COLORS = {
-  'Housing': '#4D9FFF', 'Groceries': '#00C896', 'Transport': '#FFAB2E',
-  'Dining out': '#FF6B6B', 'Utilities': '#9B7FFF', 'Subscriptions': '#FF8ED4',
-  'Health': '#FF5C5C', 'Entertainment': '#F7AEF8', 'Education': '#74B9FF',
-  'Savings': '#00C896', 'Income': '#00C896', 'Other': '#8B92A5',
-};
+import { useCategories } from '../hooks/useCategories';
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState([]);
@@ -32,13 +18,15 @@ export default function Transactions() {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterMonth, setFilterMonth] = useState(new Date().toISOString().slice(0, 7));
   const [searchQuery, setSearchQuery] = useState('');
+  const [showFuture, setShowFuture] = useState(false);
   const { addToast } = useToast();
+  const { categories, loading: catLoading, getCategoryIcon, getCategoryColor, groups, getCategoryGroup } = useCategories();
 
   const [showImport, setShowImport] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const [formData, setFormData] = useState({
-    name: '', amount: '', category: 'Groceries', date: new Date().toISOString().split('T')[0], notes: ''
+    name: '', amount: '', category: '', category_id: null, date: new Date().toISOString().split('T')[0], notes: '', is_future: false
   });
   const [formError, setFormError] = useState('');
 
@@ -48,11 +36,12 @@ export default function Transactions() {
     setTimeout(() => setExporting(false), 2000);
   };
 
-  useEffect(() => { fetchTransactions(); }, [filterMonth]);
+  useEffect(() => { fetchTransactions(); }, [filterMonth, showFuture]);
 
   async function fetchTransactions() {
     try {
-      const res = await api.get(`/transactions?month=${filterMonth}`);
+      const statusParam = showFuture ? 'future' : 'actual';
+      const res = await api.get(`/transactions?month=${filterMonth}&status=${statusParam}`);
       setTransactions(res.data);
     } catch (err) {
       console.error('Failed to fetch transactions:', err);
@@ -63,7 +52,12 @@ export default function Transactions() {
 
   function openAddSheet() {
     setEditingTx(null);
-    setFormData({ name: '', amount: '', category: 'Groceries', date: new Date().toISOString().split('T')[0], notes: '' });
+    const firstCat = categories.length > 0 ? categories[0] : null;
+    setFormData({
+      name: '', amount: '', category: firstCat?.name || 'Other',
+      category_id: firstCat?.id || null,
+      date: new Date().toISOString().split('T')[0], notes: '', is_future: false
+    });
     setFormError('');
     setShowSheet(true);
   }
@@ -74,8 +68,10 @@ export default function Transactions() {
       name: tx.name,
       amount: tx.amount.toString(),
       category: tx.category,
+      category_id: tx.category_id,
       date: tx.date,
-      notes: tx.notes || ''
+      notes: tx.notes || '',
+      is_future: tx.is_future || false,
     });
     setFormError('');
     setShowSheet(true);
@@ -96,7 +92,14 @@ export default function Transactions() {
       return;
     }
 
-    const payload = { name: formData.name, amount, category: formData.category, date: formData.date, notes: formData.notes || null };
+    const payload = {
+      name: formData.name,
+      amount,
+      category: formData.category,
+      date: formData.date,
+      notes: formData.notes || null,
+      is_future: formData.is_future,
+    };
 
     try {
       if (editingTx) {
@@ -104,7 +107,7 @@ export default function Transactions() {
         addToast('Transaction updated', 'success');
       } else {
         await api.post('/transactions', payload);
-        addToast('Transaction added', 'success');
+        addToast(formData.is_future ? 'Future transaction added' : 'Transaction added', 'success');
       }
       setShowSheet(false);
       fetchTransactions();
@@ -120,6 +123,16 @@ export default function Transactions() {
       fetchTransactions();
     } catch (err) {
       console.error('Failed to delete transaction:', err);
+    }
+  }
+
+  async function handleMoveToActual(tx) {
+    try {
+      await api.post(`/transactions/move-to-actual/${tx.id}`, { date: new Date().toISOString().split('T')[0] });
+      addToast('Transaction moved to actual', 'success');
+      fetchTransactions();
+    } catch (err) {
+      addToast('Failed to move transaction', 'error');
     }
   }
 
@@ -150,7 +163,11 @@ export default function Transactions() {
     return d.toLocaleDateString('en-ZA', { weekday: 'long', day: 'numeric', month: 'long' });
   };
 
-  if (loading) {
+  // Helper: get icon/color from the API-returned joined data or fallback to context
+  const getIcon = (tx) => tx.category_icon || getCategoryIcon(tx.category) || '📦';
+  const getColor = (tx) => tx.category_color || getCategoryColor(tx.category) || '#8B92A5';
+
+  if (loading || catLoading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 lg:pb-8">
         <Skeleton variant="title" className="mb-6" />
@@ -168,6 +185,22 @@ export default function Transactions() {
           <p className="text-sm text-[var(--text-secondary)]">{filtered.length} transactions this month</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Future toggle */}
+          <button
+            onClick={() => setShowFuture(!showFuture)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
+              showFuture
+                ? 'bg-[var(--accent-blue)] text-white'
+                : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+            title={showFuture ? 'Showing future transactions' : 'Show future transactions'}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="hidden sm:inline">{showFuture ? 'Actual' : 'Future'}</span>
+          </button>
+
           {/* Export PDF */}
           <button
             onClick={handleExport}
@@ -276,15 +309,15 @@ export default function Transactions() {
         >
           All
         </button>
-        {CATEGORIES.map(cat => (
+        {categories.map(cat => (
           <button
-            key={cat}
-            onClick={() => setFilterCategory(cat === filterCategory ? '' : cat)}
+            key={cat.name}
+            onClick={() => setFilterCategory(cat.name === filterCategory ? '' : cat.name)}
             className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
-              filterCategory === cat ? 'bg-[var(--accent-green)] text-[#0D0F14]' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+              filterCategory === cat.name ? 'bg-[var(--accent-green)] text-[#0D0F14]' : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
           >
-            {CATEGORY_ICONS[cat]} {cat}
+            {cat.icon || '📦'} {cat.name}
           </button>
         ))}
       </div>
@@ -322,18 +355,39 @@ export default function Transactions() {
                 >
                   <div
                     className="w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0"
-                    style={{ backgroundColor: (CATEGORY_COLORS[tx.category] || '#8B92A5') + '20' }}
+                    style={{ backgroundColor: (getColor(tx) || '#8B92A5') + '20' }}
                   >
-                    {CATEGORY_ICONS[tx.category] || '📦'}
+                    {getIcon(tx) || '📦'}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[var(--text-primary)] truncate">{tx.name}</p>
-                    <p className="text-xs text-[var(--text-secondary)]">{tx.category}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-[var(--text-primary)] truncate">{tx.name}</p>
+                      {tx.is_future && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-[var(--accent-blue)]/10 text-[var(--accent-blue)] border border-[var(--accent-blue)]/20 leading-none">
+                          Future
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      {tx.group_name ? `${tx.group_name} › ` : ''}{tx.category}
+                    </p>
                   </div>
                   <span className={`text-sm font-semibold tabular-nums flex-shrink-0 ${tx.amount > 0 ? 'text-[var(--accent-green)]' : 'text-[var(--text-primary)]'}`}>
                     {tx.amount > 0 ? '+' : ''}{formatCurrency(tx.amount)}
                   </span>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {tx.is_future && (
+                      <button
+                        onClick={() => handleMoveToActual(tx)}
+                        className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent-green)] hover:bg-[var(--bg-tertiary)] transition-colors"
+                        aria-label="Move to actual"
+                        title="Move to actual transactions"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </button>
+                    )}
                     <button
                       onClick={() => openEditSheet(tx)}
                       className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent-blue)] hover:bg-[var(--bg-tertiary)] transition-colors"
@@ -360,13 +414,15 @@ export default function Transactions() {
         )) : (
           <div className="flex flex-col items-center py-16 text-center">
             <div className="w-20 h-20 rounded-3xl bg-[var(--bg-tertiary)] flex items-center justify-center mb-4 text-3xl">
-              📭
+              {showFuture ? '⏰' : '📭'}
             </div>
-            <p className="text-lg font-medium text-[var(--text-primary)] mb-1">No transactions found</p>
-            <p className="text-sm text-[var(--text-secondary)] mb-4">
-              {searchQuery ? 'Try a different search term' : 'Add your first transaction to get started'}
+            <p className="text-lg font-medium text-[var(--text-primary)] mb-1">
+              {showFuture ? 'No upcoming transactions' : 'No transactions found'}
             </p>
-            <Button onClick={openAddSheet}>Add transaction</Button>
+            <p className="text-sm text-[var(--text-secondary)] mb-4">
+              {searchQuery ? 'Try a different search term' : showFuture ? 'Add a future transaction to track upcoming expenses' : 'Add your first transaction to get started'}
+            </p>
+            <Button onClick={openAddSheet}>{showFuture ? 'Add future transaction' : 'Add transaction'}</Button>
           </div>
         )}
       </div>
@@ -406,20 +462,27 @@ export default function Transactions() {
 
           <div>
             <p className="text-sm font-medium text-[var(--text-secondary)] mb-2">Category</p>
-            <div className="flex flex-wrap gap-2">
-              {CATEGORIES.map(cat => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setFormData({...formData, category: cat})}
-                  className={`px-3 py-2 rounded-xl text-xs font-medium transition-all ${
-                    formData.category === cat
-                      ? 'bg-[var(--accent-green)] text-[#0D0F14]'
-                      : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                  }`}
-                >
-                  {CATEGORY_ICONS[cat]} {cat}
-                </button>
+            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+              {groups.map(group => (
+                <div key={group.id} className="w-full">
+                  <p className="text-xs text-[var(--text-secondary)] mb-1 px-1">{group.icon} {group.name}</p>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {group.categories?.map(cat => (
+                      <button
+                        key={cat.id}
+                        type="button"
+                        onClick={() => setFormData({...formData, category: cat.name, category_id: cat.id})}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                          formData.category === cat.name
+                            ? 'bg-[var(--accent-green)] text-[#0D0F14]'
+                            : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
+                      >
+                        {cat.icon || '📦'} {cat.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -438,12 +501,26 @@ export default function Transactions() {
             placeholder="Any additional details"
           />
 
+          {/* Future toggle */}
+          <div className="flex items-center gap-3">
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.is_future}
+                onChange={(e) => setFormData({...formData, is_future: e.target.checked})}
+                className="sr-only peer"
+              />
+              <div className="w-10 h-6 rounded-full bg-[var(--bg-tertiary)] peer-checked:bg-[var(--accent-blue)] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-4" />
+            </label>
+            <span className="text-sm text-[var(--text-secondary)]">{formData.is_future ? 'Future transaction' : 'Actual transaction'}</span>
+          </div>
+
           <div className="flex gap-3 pt-2">
             <Button type="button" variant="secondary" fullWidth onClick={() => setShowSheet(false)}>
               Cancel
             </Button>
             <Button type="submit" fullWidth>
-              {editingTx ? 'Update' : 'Add Transaction'}
+              {editingTx ? 'Update' : formData.is_future ? 'Add Future' : 'Add Transaction'}
             </Button>
           </div>
         </form>

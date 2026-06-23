@@ -2,10 +2,11 @@ import React, { useState, useRef, useCallback } from 'react';
 import api from '../api';
 import Button from './ui/Button';
 import { useToast } from '../hooks/useToast';
-
-const CATEGORIES = ['Housing', 'Groceries', 'Transport', 'Dining out', 'Utilities', 'Subscriptions', 'Health', 'Entertainment', 'Education', 'Savings', 'Income', 'Other'];
+import { useCategories } from '../hooks/useCategories';
 
 export default function ImportModal({ isOpen, onClose, onSuccess }) {
+  const { categories } = useCategories();
+  const CATEGORIES = categories.map(c => c.name) || ['Housing', 'Groceries', 'Transport', 'Dining out', 'Utilities', 'Subscriptions', 'Health', 'Entertainment', 'Education', 'Savings', 'Income', 'Other'];
   const [step, setStep] = useState('upload'); // upload | preview | success
   const [file, setFile] = useState(null);
   const [rows, setRows] = useState([]);

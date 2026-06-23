@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Chart as ChartJS, ArcElement, Title, Tooltip, Legend } from 'chart.js';
+import { Doughnut } from 'react-chartjs-2';
 import api from '../api';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
@@ -9,14 +11,9 @@ import ProgressBar from '../components/ui/ProgressBar';
 import BottomSheet from '../components/ui/BottomSheet';
 import Skeleton from '../components/ui/Skeleton';
 import { useToast } from '../hooks/useToast';
+import { useCategories } from '../hooks/useCategories';
 
-const CATEGORIES = ['Housing', 'Groceries', 'Transport', 'Dining out', 'Utilities', 'Subscriptions', 'Health', 'Entertainment', 'Education', 'Savings', 'Income', 'Other'];
-
-const CATEGORY_ICONS = {
-  'Housing': '🏠', 'Groceries': '🛒', 'Transport': '🚗', 'Dining out': '🍽️',
-  'Utilities': '💡', 'Subscriptions': '📱', 'Health': '💊', 'Entertainment': '🎬',
-  'Education': '📚', 'Savings': '💰', 'Income': '💵', 'Other': '📦',
-};
+ChartJS.register(ArcElement, Title, Tooltip, Legend);
 
 export default function Budgets() {
   const [budgets, setBudgets] = useState([]);
@@ -26,13 +23,18 @@ export default function Budgets() {
   const [expandedBudget, setExpandedBudget] = useState(null);
   const [formData, setFormData] = useState({ category: '', monthly_limit: '' });
   const [formError, setFormError] = useState('');
+  const [groupAnalysis, setGroupAnalysis] = useState(null);
+  const [analysisMonth, setAnalysisMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const { addToast } = useToast();
+  const { categories, loading: catLoading, getCategoryIcon, groups } = useCategories();
+
+  const currentMonth = new Date().toISOString().slice(0, 7);
 
   useEffect(() => { fetchData(); }, []);
 
   async function fetchData() {
     try {
-      const currentMonth = new Date().toISOString().slice(0, 7);
       const [budgetRes, txRes] = await Promise.all([
         api.get('/budgets'),
         api.get(`/transactions?month=${currentMonth}`)
@@ -45,6 +47,23 @@ export default function Budgets() {
       setLoading(false);
     }
   }
+
+  // Fetch spend-by-group analysis
+  const fetchGroupAnalysis = useCallback(async (month) => {
+    setAnalysisLoading(true);
+    try {
+      const res = await api.get(`/analysis/spend-by-group?month=${month}`);
+      setGroupAnalysis(res.data);
+    } catch (err) {
+      console.error('Failed to fetch group analysis:', err);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchGroupAnalysis(analysisMonth);
+  }, [analysisMonth, fetchGroupAnalysis]);
 
   const spendingByCategory = {};
   transactions.filter(t => t.amount < 0).forEach(t => {
@@ -94,7 +113,6 @@ export default function Budgets() {
   }
 
   const usedCategories = new Set(budgets.map(b => b.category));
-  const availableCategories = CATEGORIES.filter(c => !usedCategories.has(c));
 
   // Budget health score
   const budgetHealth = budgets.length > 0
@@ -107,7 +125,34 @@ export default function Budgets() {
 
   const formatCurrency = (amount) => 'R' + Number(amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  if (loading) {
+  // Donut chart options
+  const donutOpts = {
+    responsive: true, cutout: '72%',
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#1E2330', titleColor: '#F0F2F7', bodyColor: '#8B92A5',
+        borderColor: '#2A2F3E', borderWidth: 1, padding: 12, cornerRadius: 12,
+        callbacks: { label: (ctx) => 'R' + ctx.parsed.toLocaleString('en-ZA', { minimumFractionDigits: 2 }) },
+      },
+    },
+    animation: { animateRotate: true, duration: 600 },
+  };
+
+  // Spend-by-group donut data
+  const groupDonutData = groupAnalysis?.groups?.length
+    ? {
+        labels: groupAnalysis.groups.map(g => g.groupName),
+        datasets: [{
+          data: groupAnalysis.groups.map(g => g.totalAmount),
+          backgroundColor: groupAnalysis.groups.map(g => g.groupColor || '#8B92A5'),
+          borderWidth: 0,
+          hoverOffset: 10,
+        }],
+      }
+    : null;
+
+  if (loading || catLoading) {
     return (
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 lg:pb-8">
         <Skeleton variant="title" className="mb-6" />
@@ -146,85 +191,162 @@ export default function Budgets() {
         </div>
       </Card>
 
-      {/* Budget Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {budgets.length > 0 ? budgets.map(budget => {
-          const spent = spendingByCategory[budget.category] || 0;
-          const limit = Number(budget.monthly_limit);
-          const percentage = limit > 0 ? Math.min((spent / limit) * 100, 100) : 0;
-          const isExpanded = expandedBudget === budget.id;
+      {/* Budget Cards + Spend by Group row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Budget Cards (left 2 columns) */}
+        <div className="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {budgets.length > 0 ? budgets.map(budget => {
+            const spent = spendingByCategory[budget.category] || 0;
+            const limit = Number(budget.monthly_limit);
+            const percentage = limit > 0 ? Math.min((spent / limit) * 100, 100) : 0;
+            const isExpanded = expandedBudget === budget.id;
 
-          const status = percentage >= 100 ? 'danger' : percentage >= 80 ? 'warn' : 'ok';
-          const statusLabel = percentage >= 100 ? 'Over budget' : percentage >= 80 ? 'Near limit' : 'On track';
+            const status = percentage >= 100 ? 'danger' : percentage >= 80 ? 'warn' : 'ok';
+            const statusLabel = percentage >= 100 ? 'Over budget' : percentage >= 80 ? 'Near limit' : 'On track';
 
-          return (
-            <Card
-              key={budget.id}
-              hover
-              glow={status === 'danger' ? 'red' : status === 'warn' ? 'amber' : null}
-              onClick={() => setExpandedBudget(isExpanded ? null : budget.id)}
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">{CATEGORY_ICONS[budget.category] || '📦'}</span>
-                  <div>
-                    <h3 className="font-semibold text-[var(--text-primary)] text-sm">{budget.category}</h3>
-                    <p className="text-xs text-[var(--text-secondary)]">{formatCurrency(spent)} / {formatCurrency(limit)}</p>
-                  </div>
-                </div>
-                <Badge variant={status} size="sm" dot>{statusLabel}</Badge>
-              </div>
-
-              <ProgressArc
-                value={spent}
-                max={limit}
-                size={80}
-                strokeWidth={6}
-                className="w-full justify-center my-2"
+            return (
+              <Card
+                key={budget.id}
+                hover
+                glow={status === 'danger' ? 'red' : status === 'warn' ? 'amber' : null}
+                onClick={() => setExpandedBudget(isExpanded ? null : budget.id)}
               >
-                <span className="text-xs font-bold text-[var(--text-primary)] tabular-nums">
-                  {Math.round(percentage)}%
-                </span>
-              </ProgressArc>
-
-              <ProgressBar value={spent} max={limit} height="h-2" className="mt-3" />
-
-              {/* Expanded: AI Tip */}
-              {isExpanded && (
-                <div className="mt-4 pt-3 border-t border-[var(--border)] animate-on-mount">
-                  <div className="flex gap-2">
-                    <svg className="w-4 h-4 text-[var(--accent-purple)] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{getCategoryIcon(budget.category) || '📦'}</span>
                     <div>
-                      <p className="text-xs font-medium text-[var(--accent-purple)] mb-0.5">AI tip</p>
-                      <p className="text-xs text-[var(--text-secondary)]">
-                        {percentage >= 80
-                          ? `You're close to your ${budget.category} limit. Try reducing non-essential purchases.`
-                          : `Great job staying under budget in ${budget.category}! Consider redirecting savings to a goal.`}
-                      </p>
+                      <h3 className="font-semibold text-[var(--text-primary)] text-sm">{budget.category}</h3>
+                      <p className="text-xs text-[var(--text-secondary)]">{formatCurrency(spent)} / {formatCurrency(limit)}</p>
                     </div>
                   </div>
-                  <div className="flex gap-2 mt-3">
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(budget.id); }}
-                      className="text-xs font-medium text-[var(--accent-red)] hover:opacity-80 transition-opacity">
-                      Delete
-                    </button>
+                  <Badge variant={status} size="sm" dot>{statusLabel}</Badge>
+                </div>
+
+                <ProgressArc
+                  value={spent}
+                  max={limit}
+                  size={80}
+                  strokeWidth={6}
+                  className="w-full justify-center my-2"
+                >
+                  <span className="text-xs font-bold text-[var(--text-primary)] tabular-nums">
+                    {Math.round(percentage)}%
+                  </span>
+                </ProgressArc>
+
+                <ProgressBar value={spent} max={limit} height="h-2" className="mt-3" />
+
+                {/* Expanded: AI Tip */}
+                {isExpanded && (
+                  <div className="mt-4 pt-3 border-t border-[var(--border)] animate-on-mount">
+                    <div className="flex gap-2">
+                      <svg className="w-4 h-4 text-[var(--accent-purple)] flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      <div>
+                        <p className="text-xs font-medium text-[var(--accent-purple)] mb-0.5">AI tip</p>
+                        <p className="text-xs text-[var(--text-secondary)]">
+                          {percentage >= 80
+                            ? `You're close to your ${budget.category} limit. Try reducing non-essential purchases.`
+                            : `Great job staying under budget in ${budget.category}! Consider redirecting savings to a goal.`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <button onClick={(e) => { e.stopPropagation(); handleDelete(budget.id); }}
+                        className="text-xs font-medium text-[var(--accent-red)] hover:opacity-80 transition-opacity">
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            );
+          }) : (
+            <div className="sm:col-span-2 flex flex-col items-center py-16 text-center">
+              <div className="w-20 h-20 rounded-3xl bg-[var(--bg-tertiary)] flex items-center justify-center mb-4 text-3xl">
+                💰
+              </div>
+              <p className="text-lg font-medium text-[var(--text-primary)] mb-1">No budgets set</p>
+              <p className="text-sm text-[var(--text-secondary)] mb-4">Create your first budget to track spending</p>
+              <Button onClick={openAddSheet}>Create Budget</Button>
+            </div>
+          )}
+        </div>
+
+        {/* Spend by Group Analysis (right column) */}
+        <div className="rounded-2xl p-6 border border-[var(--border)] bg-[var(--bg-secondary)] shadow-[0_2px_12px_rgba(0,0,0,0.4)]">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)]">Spend by group</h3>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  const d = new Date(analysisMonth + '-01');
+                  d.setMonth(d.getMonth() - 1);
+                  setAnalysisMonth(d.toISOString().slice(0, 7));
+                }}
+                className="p-1 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                aria-label="Previous month"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <span className="text-[11px] text-[var(--text-secondary)] font-medium tabular-nums">
+                {new Date(analysisMonth + '-01').toLocaleDateString('en-ZA', { month: 'short', year: '2-digit' })}
+              </span>
+              <button
+                onClick={() => {
+                  const d = new Date(analysisMonth + '-01');
+                  d.setMonth(d.getMonth() + 1);
+                  setAnalysisMonth(d.toISOString().slice(0, 7));
+                }}
+                className="p-1 rounded text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                aria-label="Next month"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {analysisLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: 'var(--accent-green)', borderTopColor: 'transparent' }} />
+            </div>
+          ) : groupDonutData ? (
+            <div className="flex flex-col items-center">
+              <div className="relative w-48 h-48">
+                <Doughnut data={groupDonutData} options={donutOpts} />
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="text-center">
+                    <p className="text-xl font-bold text-[var(--text-primary)] tabular-nums">
+                      {formatCurrency(groupAnalysis?.grandTotal || 0)}
+                    </p>
+                    <p className="text-[11px] text-[var(--text-secondary)]">total spent</p>
                   </div>
                 </div>
-              )}
-            </Card>
-          );
-        }) : (
-          <div className="sm:col-span-2 lg:col-span-3 flex flex-col items-center py-16 text-center">
-            <div className="w-20 h-20 rounded-3xl bg-[var(--bg-tertiary)] flex items-center justify-center mb-4 text-3xl">
-              💰
+              </div>
+              <div className="w-full mt-4 space-y-2">
+                {groupAnalysis?.groups?.map(g => (
+                  <div key={g.groupId || g.groupName} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: g.groupColor || '#8B92A5' }} />
+                      <span className="text-[var(--text-secondary)]">{g.groupName}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[11px] text-[var(--text-secondary)] tabular-nums">{g.percentageOfTotal}%</span>
+                      <span className="font-medium text-[var(--text-primary)] tabular-nums">{formatCurrency(g.totalAmount)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <p className="text-lg font-medium text-[var(--text-primary)] mb-1">No budgets set</p>
-            <p className="text-sm text-[var(--text-secondary)] mb-4">Create your first budget to track spending</p>
-            <Button onClick={openAddSheet}>Create Budget</Button>
-          </div>
-        )}
+          ) : (
+            <p className="text-[var(--text-secondary)] text-sm text-center py-10">No spending data this month</p>
+          )}
+        </div>
       </div>
 
       {/* FAB */}
@@ -248,25 +370,36 @@ export default function Budgets() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <p className="text-sm font-medium text-[var(--text-secondary)] mb-2">Category</p>
-            <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-              {availableCategories.length > 0 ? availableCategories.map(cat => (
-                <button
-                  key={cat}
-                  type="button"
-                  onClick={() => setFormData({...formData, category: cat})}
-                  className={`flex flex-col items-center gap-1 p-3 rounded-xl text-xs font-medium transition-all ${
-                    formData.category === cat
-                      ? 'bg-[var(--accent-green)] text-[#0D0F14]'
-                      : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                  }`}
-                >
-                  <span className="text-lg">{CATEGORY_ICONS[cat] || '📦'}</span>
-                  {cat}
-                </button>
+            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+              {groups.length > 0 ? groups.map(group => (
+                <div key={group.id} className="w-full">
+                  <p className="text-xs text-[var(--text-secondary)] mb-1 px-1">{group.icon} {group.name}</p>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {group.categories
+                      ?.filter(cat => !usedCategories.has(cat.name))
+                      .map(cat => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setFormData({...formData, category: cat.name})}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                            formData.category === cat.name
+                              ? 'bg-[var(--accent-green)] text-[#0D0F14]'
+                              : 'bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                          }`}
+                        >
+                          {cat.icon || '📦'} {cat.name}
+                        </button>
+                      ))}
+                  </div>
+                </div>
               )) : (
-                <p className="col-span-3 text-sm text-[var(--text-secondary)] py-4 text-center">All categories already have budgets</p>
+                <p className="text-sm text-[var(--text-secondary)] py-4 text-center">No categories available</p>
               )}
             </div>
+            {categories.filter(c => !usedCategories.has(c.name)).length === 0 && categories.length > 0 && (
+              <p className="text-sm text-[var(--text-secondary)] py-2 text-center">All categories already have budgets</p>
+            )}
           </div>
 
           <Input

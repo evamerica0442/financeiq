@@ -1,24 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import api from '../api';
 import useCountUp from '../hooks/useCountUp';
+import { useCategories } from '../hooks/useCategories';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Title, Tooltip, Legend);
-
-// ─── Category visual map ─────────────────────────────────────────────────────
-const CATEGORY_ICONS = {
-  Housing: '🏠', Groceries: '🛒', Transport: '🚗', 'Dining out': '🍽️',
-  Utilities: '💡', Subscriptions: '📱', Health: '💊', Entertainment: '🎬',
-  Education: '📚', Savings: '💰', Income: '💵', Other: '📦',
-};
-
-const CATEGORY_COLORS = {
-  Housing: '#4D9FFF', Groceries: '#00C896', Transport: '#FFAB2E',
-  'Dining out': '#FF6B6B', Utilities: '#9B7FFF', Subscriptions: '#FF8ED4',
-  Health: '#FF5C5C', Entertainment: '#F7AEF8', Education: '#74B9FF',
-  Savings: '#00C896', Income: '#00C896', Other: '#8B92A5',
-};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n) =>
@@ -80,7 +67,11 @@ export default function Dashboard() {
   const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [groupAnalysis, setGroupAnalysis] = useState(null);
+  const [analysisMonth, setAnalysisMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const chartRef = useRef(null);
+  const { categories, getCategoryIcon, getCategoryColor, groups } = useCategories();
 
   const currentMonth = new Date().toISOString().slice(0, 7);
 
@@ -114,6 +105,23 @@ export default function Dashboard() {
     }
   }, [txns.length, budgets.length, assets.length]);
 
+  // Fetch spend-by-group analysis
+  const fetchGroupAnalysis = useCallback(async (month) => {
+    setAnalysisLoading(true);
+    try {
+      const res = await api.get(`/analysis/spend-by-group?month=${month}`);
+      setGroupAnalysis(res.data);
+    } catch (err) {
+      console.error('Failed to fetch group analysis:', err);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchGroupAnalysis(analysisMonth);
+  }, [analysisMonth, fetchGroupAnalysis]);
+
   // ── Derived data ────────────────────────────────────────────────────────────
   const income = txns.filter(t => t.amount > 0).reduce((s, t) => s + Number(t.amount), 0);
   const spent = txns.filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
@@ -137,7 +145,7 @@ export default function Dashboard() {
         labels: catEntries.map(([c]) => c),
         datasets: [{
           data: catEntries.map(([, v]) => v),
-          backgroundColor: catEntries.map(([c], i) => CATEGORY_COLORS[c] || ['#4D9FFF','#00C896','#FFAB2E','#FF5C5C','#9B7FFF','#FF8ED4'][i % 6]),
+          backgroundColor: catEntries.map(([c]) => getCategoryColor(c) || '#8B92A5'),
           borderWidth: 0,
           hoverOffset: 10,
         }],
@@ -157,7 +165,7 @@ export default function Dashboard() {
     animation: { animateRotate: true, duration: 600 },
   };
 
-  // 6-month bar chart
+  // 6-month bar chart (approximate from current data)
   const months = [];
   for (let i = 5; i >= 0; i--) { const d = new Date(); d.setMonth(d.getMonth() - i); months.push(d.toISOString().slice(0, 7)); }
 
@@ -204,6 +212,22 @@ export default function Dashboard() {
       },
     },
   };
+
+  // Spend-by-group donut data
+  const groupDonutData = groupAnalysis?.groups?.length
+    ? {
+        labels: groupAnalysis.groups.map(g => g.groupName),
+        datasets: [{
+          data: groupAnalysis.groups.map(g => g.totalAmount),
+          backgroundColor: groupAnalysis.groups.map(g => g.groupColor || '#8B92A5'),
+          borderWidth: 0,
+          hoverOffset: 10,
+        }],
+      }
+    : null;
+
+  // Top 3 summary
+  const top3 = groupAnalysis?.groups?.slice(0, 3) || [];
 
   if (loading) return <DashSkeleton />;
 
@@ -317,7 +341,7 @@ export default function Dashboard() {
 
       {/* ── Charts row ──────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Donut */}
+        {/* Spend by Category Donut */}
         <div className="rounded-2xl p-6 border border-[#2A2F3E] bg-[#161A23] shadow-[0_2px_12px_rgba(0,0,0,0.4)]">
           <h3 className="text-sm font-semibold text-[#F0F2F7] mb-4">Spending by category</h3>
           {donutData ? (
@@ -335,8 +359,8 @@ export default function Dashboard() {
                 {catEntries.slice(0, 5).map(([cat, amt]) => (
                   <div key={cat} className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[cat] || '#8B92A5' }} />
-                      <span className="text-[#8B92A5]">{cat}</span>
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getCategoryColor(cat) || '#8B92A5' }} />
+                      <span className="text-[#8B92A5]">{getCategoryIcon(cat) || '📦'} {cat}</span>
                     </div>
                     <span className="font-medium text-[#F0F2F7] tabular-nums">{fmt(amt)}</span>
                   </div>
@@ -348,8 +372,92 @@ export default function Dashboard() {
           )}
         </div>
 
+        {/* Spend by Group Donut */}
+        <div className="rounded-2xl p-6 border border-[#2A2F3E] bg-[#161A23] shadow-[0_2px_12px_rgba(0,0,0,0.4)]">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-[#F0F2F7]">Spend by group</h3>
+            {/* Month selector for analysis */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  const d = new Date(analysisMonth + '-01');
+                  d.setMonth(d.getMonth() - 1);
+                  setAnalysisMonth(d.toISOString().slice(0, 7));
+                }}
+                className="p-1 rounded text-[#8B92A5] hover:text-[#F0F2F7] transition-colors"
+                aria-label="Previous month"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <span className="text-[11px] text-[#8B92A5] font-medium tabular-nums">
+                {new Date(analysisMonth + '-01').toLocaleDateString('en-ZA', { month: 'short', year: '2-digit' })}
+              </span>
+              <button
+                onClick={() => {
+                  const d = new Date(analysisMonth + '-01');
+                  d.setMonth(d.getMonth() + 1);
+                  setAnalysisMonth(d.toISOString().slice(0, 7));
+                }}
+                className="p-1 rounded text-[#8B92A5] hover:text-[#F0F2F7] transition-colors"
+                aria-label="Next month"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {analysisLoading ? (
+            <div className="flex items-center justify-center py-10">
+              <div className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: '#00C896', borderTopColor: 'transparent' }} />
+            </div>
+          ) : groupDonutData ? (
+            <div className="flex flex-col items-center">
+              <div className="relative w-48 h-48">
+                <Doughnut data={groupDonutData} options={donutOpts} />
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="text-center">
+                    <p className="text-xl font-bold text-[#F0F2F7] tabular-nums">{fmtShort(groupAnalysis?.grandTotal || 0)}</p>
+                    <p className="text-[11px] text-[#8B92A5]">total spent</p>
+                  </div>
+                </div>
+              </div>
+              <div className="w-full mt-4 space-y-2">
+                {groupAnalysis?.groups?.map(g => (
+                  <div key={g.groupId || g.groupName} className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: g.groupColor || '#8B92A5' }} />
+                      <span className="text-[#8B92A5]">{g.groupName}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[11px] text-[#8B92A5] tabular-nums">{g.percentageOfTotal}%</span>
+                      <span className="font-medium text-[#F0F2F7] tabular-nums">{fmt(g.totalAmount)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Top 3 summary */}
+              {top3.length >= 2 && (
+                <div className="mt-3 p-3 rounded-xl w-full bg-[#1E2330] border border-[#2A2F3E]">
+                  <p className="text-[11px] text-[#8B92A5] leading-relaxed">
+                    You spent the most on <span style={{ color: top3[0]?.groupColor || '#8B92A5' }} className="font-medium">{top3[0]?.groupName}</span>
+                    {top3[0] ? ` (${top3[0]?.percentageOfTotal}%)` : ''}
+                    {top3[1] ? `, then on <span style="color:${top3[1]?.groupColor || '#8B92A5'}" class="font-medium">${top3[1]?.groupName}</span> (${top3[1]?.percentageOfTotal}%)` : ''}
+                    {top3[2] ? `, then on <span style="color:${top3[2]?.groupColor || '#8B92A5'}" class="font-medium">${top3[2]?.groupName}</span> (${top3[2]?.percentageOfTotal}%)` : ''}.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-[#8B92A5] text-sm text-center py-10">No spending data this month</p>
+          )}
+        </div>
+
         {/* Bar chart */}
-        <div className="lg:col-span-2 rounded-2xl border border-[#2A2F3E] bg-[#161A23] shadow-[0_2px_12px_rgba(0,0,0,0.4)] overflow-hidden">
+        <div className="lg:col-span-1 rounded-2xl border border-[#2A2F3E] bg-[#161A23] shadow-[0_2px_12px_rgba(0,0,0,0.4)] overflow-hidden">
           <div className="p-6 pb-2">
             <h3 className="text-sm font-semibold text-[#F0F2F7]">Monthly cash flow</h3>
           </div>
@@ -428,9 +536,9 @@ export default function Dashboard() {
                 >
                   <div
                     className="w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0"
-                    style={{ backgroundColor: (CATEGORY_COLORS[tx.category] || '#8B92A5') + '18' }}
+                    style={{ backgroundColor: (tx.category_color || getCategoryColor(tx.category) || '#8B92A5') + '18' }}
                   >
-                    {CATEGORY_ICONS[tx.category] || '📦'}
+                    {tx.category_icon || getCategoryIcon(tx.category) || '📦'}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-[#F0F2F7] truncate">{tx.name}</p>

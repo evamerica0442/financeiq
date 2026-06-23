@@ -13,6 +13,8 @@ export default function Navbar() {
     { path: '/budgets', label: 'Budgets', icon: '💰' },
     { path: '/goals', label: 'Goals', icon: '🎯' },
     { path: '/networth', label: 'Net Worth', icon: '🏦' },
+    { path: '/reports', label: 'Reports', icon: '📊' },
+    { path: '/categories', label: 'Categories', icon: '🏷️' },
     { path: '/advisor', label: 'AI Advisor', icon: '🤖' },
   ];
 
