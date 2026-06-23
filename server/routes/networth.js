@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db');
 const authMiddleware = require('../middleware/authMiddleware');
 const {
+  getNetWorthForUser,
   takeMonthlySnapshot,
   syncCashFromTransactions,
   getNetworthHistory,
@@ -34,6 +35,17 @@ router.get('/history', async (req, res) => {
   } catch (err) {
     console.error('Get net worth history error:', err);
     res.status(500).json({ error: 'Failed to fetch net worth history.' });
+  }
+});
+
+// GET /api/networth/summary — single source of truth for net worth
+router.get('/summary', async (req, res) => {
+  try {
+    const { totalAssets, totalLiabilities, netWorth } = await getNetWorthForUser(req.user.id);
+    res.json({ totalAssets, totalLiabilities, netWorth });
+  } catch (err) {
+    console.error('Get net worth summary error:', err);
+    res.status(500).json({ error: 'Failed to fetch net worth summary.' });
   }
 });
 

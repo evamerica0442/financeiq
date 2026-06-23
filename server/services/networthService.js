@@ -1,7 +1,23 @@
 const pool = require('../db');
 
 /**
- * Fetch all assets/liabilities for a user, summing up values.
+ * Net worth calculation — single source of truth.
+ *
+ * Net worth is now calculated as total assets (including cash/bank accounts)
+ * minus total liabilities for the authenticated user.
+ *
+ * How it works:
+ * - The `assets` table stores both assets (type='asset') and liabilities (type='liability').
+ * - Asset types include cash, savings, investment, property, vehicle, other.
+ *   Cash/bank accounts (asset_type='cash'|'savings') are included in totalAssets.
+ * - Liability types include home_loan, vehicle_finance, personal_loan, credit_card, store_account, other.
+ * - totalAssets    = SUM of all rows where type = 'asset'.
+ * - totalLiabilities = SUM(|value|) of all rows where type = 'liability'
+ *     (abs because value may be stored negative, e.g. -50000 for a loan).
+ * - netWorth       = totalAssets - totalLiabilities.
+ *
+ * This function is the canonical source of truth. All routes and frontend
+ * components should call getNetWorthForUser() rather than recomputing locally.
  */
 async function getUserTotals(userId) {
   const result = await pool.query(
@@ -18,6 +34,13 @@ async function getUserTotals(userId) {
   const netWorth = totalAssets - totalLiabilities;
   return { items, totalAssets, totalLiabilities, netWorth };
 }
+
+/**
+ * getNetWorthForUser — canonical alias for getUserTotals.
+ * Returns { items, totalAssets, totalLiabilities, netWorth }.
+ * All routes should call this rather than recomputing locally.
+ */
+const getNetWorthForUser = getUserTotals;
 
 /**
  * takeMonthlySnapshot(userId)
@@ -411,6 +434,7 @@ function monthsBetween(dateStr1, dateStr2) {
 }
 
 module.exports = {
+  getNetWorthForUser,
   takeMonthlySnapshot,
   syncCashFromTransactions,
   applyVehicleDepreciation,
