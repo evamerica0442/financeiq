@@ -24,10 +24,18 @@ const fmtDate = (s) => {
 };
 
 // ─── Animated metric display ─────────────────────────────────────────────────
-function AnimatedNumber({ value, prefix = 'R', decimals = 0, className = '' }) {
-  const { count, observe } = useCountUp(Number(value), 800, false);
-  const ref = useRef(null);
-  useEffect(() => { if (ref.current) observe(ref.current); }, [ref, observe]);
+function AnimatedNumber({ value, prefix = 'R', decimals = 0, className = '', style }) {
+  const numValue = Number(value);
+  const { count, start } = useCountUp(numValue, 800, true);
+  const nodeRef = useRef(null);
+
+  // Re-animate when value changes (e.g. data loads after skeleton)
+  useEffect(() => {
+    if (numValue > 0) {
+      const raf = requestAnimationFrame(() => start());
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [numValue, start]);
 
   const display = (() => {
     const n = count;
@@ -36,7 +44,7 @@ function AnimatedNumber({ value, prefix = 'R', decimals = 0, className = '' }) {
     return prefix + n.toLocaleString('en-ZA', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   })();
 
-  return <span ref={ref} className={`tabular-nums tracking-tight ${className}`}>{display}</span>;
+  return <span ref={nodeRef} className={`tabular-nums tracking-tight ${className}`} style={style}>{display}</span>;
 }
 
 // ─── Skeleton placeholder ────────────────────────────────────────────────────

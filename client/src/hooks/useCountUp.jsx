@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 export default function useCountUp(end, duration = 800, startOnMount = true) {
   const [count, setCount] = useState(0);
   const [started, setStarted] = useState(startOnMount);
+  const [tick, setTick] = useState(0); // increment to force re-animation
   const observerRef = useRef(null);
-  const countRef = useRef(0);
 
   useEffect(() => {
     if (!started) return;
@@ -14,8 +15,10 @@ export default function useCountUp(end, duration = 800, startOnMount = true) {
     }
 
     let startTime = null;
-    const startValue = countRef.current;
+    const startValue = 0;
     const endValue = Number(end);
+    let frameId;
+
     const animate = (timestamp) => {
       if (!startTime) startTime = timestamp;
       const progress = Math.min((timestamp - startTime) / duration, 1);
@@ -23,21 +26,25 @@ export default function useCountUp(end, duration = 800, startOnMount = true) {
       const current = startValue + (endValue - startValue) * eased;
       setCount(current);
       if (progress < 1) {
-        requestAnimationFrame(animate);
+        frameId = requestAnimationFrame(animate);
       } else {
         setCount(endValue);
       }
     };
-    requestAnimationFrame(animate);
-  }, [end, duration, started]);
+    frameId = requestAnimationFrame(animate);
 
-  function start() {
-    countRef.current = 0;
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+    };
+  }, [end, duration, started, tick]);
+
+  const start = useCallback(() => {
     setCount(0);
     setStarted(true);
-  }
+    setTick(t => t + 1); // force effect to re-run
+  }, []);
 
-  function observe(ref) {
+  const observe = useCallback((ref) => {
     if (observerRef.current) observerRef.current.disconnect();
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -52,7 +59,14 @@ export default function useCountUp(end, duration = 800, startOnMount = true) {
       observer.observe(ref);
       observerRef.current = observer;
     }
-  }
+  }, [start]);
+
+  // Cleanup observer on unmount
+  useEffect(() => {
+    return () => {
+      if (observerRef.current) observerRef.current.disconnect();
+    };
+  }, []);
 
   return { count: Math.round(count * 100) / 100, start, observe };
 }
