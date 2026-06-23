@@ -10,6 +10,11 @@ const budgetRoutes = require('./routes/budgets');
 const goalRoutes = require('./routes/goals');
 const networthRoutes = require('./routes/networth');
 const aiRoutes = require('./routes/ai');
+const importRoutes = require('./routes/import');
+const exportRoutes = require('./routes/export');
+const categoryRoutes = require('./routes/categories');
+const reportRoutes = require('./routes/reports');
+const analysisRoutes = require('./routes/analysis');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -31,6 +36,11 @@ app.use('/api/budgets', budgetRoutes);
 app.use('/api/goals', goalRoutes);
 app.use('/api/networth', networthRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/import', importRoutes);
+app.use('/api/export', exportRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/reports', reportRoutes);
+app.use('/api/analysis', analysisRoutes);
 
 // Serve React build in production
 if (process.env.NODE_ENV === 'production') {

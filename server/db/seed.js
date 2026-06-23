@@ -2,6 +2,44 @@ require('dotenv').config();
 const bcrypt = require('bcrypt');
 const pool = require('./index');
 
+/**
+ * Copy global (user_id = NULL) categories and groups for a given user.
+ * This ensures each new user gets their own editable copy of defaults.
+ */
+async function copyGlobalCategoriesToUser(client, userId) {
+  // Copy groups
+  const groupsResult = await client.query(
+    `INSERT INTO category_groups (name, icon, color, sort_order, user_id)
+     SELECT name, icon, color, sort_order, $1 FROM category_groups WHERE user_id IS NULL
+     ON CONFLICT (name, COALESCE(user_id, 0)) DO NOTHING
+     RETURNING id, name`,
+    [userId]
+  );
+  const groupMap = {}; // old name -> new id
+  for (const row of groupsResult.rows) {
+    const oldGroup = await client.query(
+      'SELECT id FROM category_groups WHERE name = $1 AND user_id IS NULL',
+      [row.name]
+    );
+    groupMap[oldGroup.rows[0]?.id] = row.id;
+  }
+
+  // Copy categories, mapping to new groups
+  const cats = await client.query(
+    'SELECT * FROM categories WHERE user_id IS NULL'
+  );
+  for (const cat of cats.rows) {
+    const newGroupId = groupMap[cat.group_id];
+    if (!newGroupId) continue;
+    await client.query(
+      `INSERT INTO categories (name, group_id, icon, color, sort_order, type, user_id, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+       ON CONFLICT (name, COALESCE(user_id, 0)) DO NOTHING`,
+      [cat.name, newGroupId, cat.icon, cat.color, cat.sort_order, cat.type || 'expense', userId]
+    );
+  }
+}
+
 async function seed() {
   const client = await pool.connect();
   try {
@@ -19,11 +57,25 @@ async function seed() {
     const userId = userResult.rows[0].id;
     console.log(`Demo user created with ID: ${userId}`);
 
+    // Copy global categories to this user
+    await copyGlobalCategoriesToUser(client, userId);
+    console.log('Per-user categories & groups seeded');
+
     // Clear existing demo data
     await client.query('DELETE FROM transactions WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM budgets WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM goals WHERE user_id = $1', [userId]);
     await client.query('DELETE FROM assets WHERE user_id = $1', [userId]);
+
+    // Fetch the per-user category mapping: category name -> category_id
+    const userCats = await client.query(
+      'SELECT id, name FROM categories WHERE user_id = $1',
+      [userId]
+    );
+    const catIdMap = {};
+    for (const row of userCats.rows) {
+      catIdMap[row.name] = row.id;
+    }
 
     // Seed transactions (last 6 months)
     const categories = ['Housing', 'Groceries', 'Transport', 'Dining out', 'Utilities', 'Subscriptions', 'Health', 'Entertainment', 'Education', 'Savings', 'Income', 'Other'];
@@ -37,6 +89,7 @@ async function seed() {
         name: 'Salary',
         amount: 45000,
         category: 'Income',
+        category_id: catIdMap['Income'] || null,
         date: d.toISOString().split('T')[0],
         notes: 'Monthly salary'
       });
@@ -69,17 +122,18 @@ async function seed() {
           name: pattern.name,
           amount: Math.round(pattern.amount * variation),
           category: pattern.category,
+          category_id: catIdMap[pattern.category] || null,
           date: d.toISOString().split('T')[0],
           notes: null
         });
       }
     }
 
-    // Insert transactions
+    // Insert transactions with category_id
     for (const t of transactions) {
       await client.query(
-        'INSERT INTO transactions (user_id, name, amount, category, date, notes) VALUES ($1, $2, $3, $4, $5, $6)',
-        [userId, t.name, t.amount, t.category, t.date, t.notes]
+        'INSERT INTO transactions (user_id, name, amount, category, category_id, date, notes) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [userId, t.name, t.amount, t.category, t.category_id, t.date, t.notes]
       );
     }
     console.log(`Inserted ${transactions.length} transactions`);

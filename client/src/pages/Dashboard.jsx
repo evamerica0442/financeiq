@@ -439,14 +439,23 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
-              {/* Top 3 summary */}
+              {/* Top 3 summary — built with proper JSX elements, not string interpolation */}
               {top3.length >= 2 && (
                 <div className="mt-3 p-3 rounded-xl w-full bg-[#1E2330] border border-[#2A2F3E]">
                   <p className="text-[11px] text-[#8B92A5] leading-relaxed">
-                    You spent the most on <span style={{ color: top3[0]?.groupColor || '#8B92A5' }} className="font-medium">{top3[0]?.groupName}</span>
+                    You spent the most on{' '}
+                    <span style={{ color: top3[0]?.groupColor || '#8B92A5' }} className="font-medium">{top3[0]?.groupName}</span>
                     {top3[0] ? ` (${top3[0]?.percentageOfTotal}%)` : ''}
-                    {top3[1] ? `, then on <span style="color:${top3[1]?.groupColor || '#8B92A5'}" class="font-medium">${top3[1]?.groupName}</span> (${top3[1]?.percentageOfTotal}%)` : ''}
-                    {top3[2] ? `, then on <span style="color:${top3[2]?.groupColor || '#8B92A5'}" class="font-medium">${top3[2]?.groupName}</span> (${top3[2]?.percentageOfTotal}%)` : ''}.
+                    {top3[1] ? (
+                      <>, then on{' '}
+                        <span style={{ color: top3[1]?.groupColor || '#8B92A5' }} className="font-medium">{top3[1]?.groupName}</span>
+                        {' '}({top3[1]?.percentageOfTotal}%)</>
+                    ) : ''}
+                    {top3[2] ? (
+                      <>, then on{' '}
+                        <span style={{ color: top3[2]?.groupColor || '#8B92A5' }} className="font-medium">{top3[2]?.groupName}</span>
+                        {' '}({top3[2]?.percentageOfTotal}%)</>
+                    ) : ''}.
                   </p>
                 </div>
               )}
