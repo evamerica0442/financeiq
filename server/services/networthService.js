@@ -274,7 +274,9 @@ async function getNetworthHistory(userId, months = 12) {
   );
 
   const snapshots = result.rows.map(row => ({
-    date: row.snapshot_date,
+    date: row.snapshot_date instanceof Date
+      ? row.snapshot_date.toISOString().split('T')[0]
+      : String(row.snapshot_date),
     net_worth: Number(row.net_worth),
     total_assets: Number(row.total_assets),
     total_liabilities: Number(row.total_liabilities),
