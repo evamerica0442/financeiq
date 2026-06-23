@@ -2,7 +2,14 @@ services:
   - type: web
     name: financeiq
     runtime: node
-    buildCommand: npm install --no-audit --no-fund && cd client && npm install --no-audit --no-fund && npm run build && cd .. && test -d build && echo "Frontend build succeeded" || (echo "Frontend build failed" && exit 1)
+    buildCommand: >
+      npm install --no-audit --no-fund &&
+      cd client &&
+      npm install --no-audit --no-fund &&
+      npm run build &&
+      cd .. &&
+      test -d client/build &&
+      echo "Frontend build succeeded"
     startCommand: npm start
     envVars:
       - key: DATABASE_URL
