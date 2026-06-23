@@ -267,7 +267,13 @@ export default function NetWorth() {
       ' at ' + d.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' });
   };
 
-  const categoryOptions = categories.filter(c => c.type === 'income' || c.type === 'transfer').map(c => c.name);
+  /**
+   * Categories are loaded from the same endpoint as Transactions (/api/categories via useCategories())
+   * and mapped into dropdown options, so assets/liabilities can be linked to a category.
+   * All active categories are included (expense, income, transfer) so users can link an asset
+   * to any tracked category. The selected category name is stored in the `linked_category` TEXT field.
+   */
+  const categoryOptions = categories.map(c => c.name);
   const uniqueCategories = [...new Set(categoryOptions)];
 
   if (loading || catLoading) {
