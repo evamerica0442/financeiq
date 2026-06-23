@@ -1,8 +1,8 @@
 services:
   - type: web
     name: financeiq
-    env: node
-    buildCommand: npm install && npm run build
+    runtime: node
+    buildCommand: npm install --no-audit --no-fund && cd client && npm install --no-audit --no-fund && npm run build && cd .. && ls -la client/dist
     startCommand: npm start
     envVars:
       - key: DATABASE_URL
