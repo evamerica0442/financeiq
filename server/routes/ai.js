@@ -2,87 +2,143 @@ const express = require('express');
 const Groq = require('groq-sdk');
 const pool = require('../db');
 const authMiddleware = require('../middleware/authMiddleware');
-const { getNetworthInsights, getNetworthHistory } = require('../services/networthService');
 
 const router = express.Router();
 router.use(authMiddleware);
 
 // -----------------------------------------------------------------------------
-// SYSTEM PROMPT — for /insights (JSON output)
+// SYSTEM PROMPT — /insights (JSON output)
 // -----------------------------------------------------------------------------
-const INSIGHTS_SYSTEM_PROMPT = `You are FinanceIQ, a personal financial advisor AI. You have access to the user's full financial data including their transactions, budgets, goals, assets, and liabilities.
-
-Always reference specific numbers from their data. Be concise. Use South African Rand (R) as the currency unless the user's profile says otherwise.
-
-Respond ONLY with valid JSON in this exact format and nothing else — no markdown, no backticks, no explanation:
+const INSIGHTS_SYSTEM_PROMPT = `You are FinanceIQ, a personal financial advisor AI for South African users.
+Analyse the user's financial data and respond ONLY with valid JSON — no markdown, no backticks, no explanation:
 {
   "highlights": [{"label": "string", "text": "string", "type": "ok|warn|danger|info"}],
   "tips": [{"title": "string", "body": "string", "type": "ok|warn|danger"}],
   "anomalies": [{"text": "string"}]
-}`;
+}
+Use Rand (R) for all amounts. Be concise. Max 3 highlights, 3 tips, 2 anomalies.`;
 
 // -----------------------------------------------------------------------------
-// CHAT SYSTEM PROMPT — for /chat (conversational output, NO JSON)
+// SYSTEM PROMPT — /chat (conversational, NO JSON)
 // -----------------------------------------------------------------------------
-const CHAT_SYSTEM_PROMPT = `You are FinanceIQ, a friendly and knowledgeable personal financial advisor AI. You have access to the user's full financial data including their transactions, budgets, goals, assets, and liabilities.
-
-Your job is to:
-1. Detect patterns and anomalies in spending
-2. Give concrete, actionable tips (not generic advice)
-3. Project goal completion dates and suggest adjustments
-4. Flag budget categories approaching or exceeding their limits
-5. Highlight wins and positive trends
-6. Answer questions about their finances in a friendly, clear way
-
-Always reference specific numbers from their data. Be concise and conversational.
-Use South African Rand (R) as the currency unless the user's profile says otherwise.
-
-IMPORTANT: Respond in plain conversational text only. Do NOT return JSON, code blocks, or any structured data format. Write as if you are a human financial advisor having a chat.`;
+const CHAT_SYSTEM_PROMPT = `You are FinanceIQ, a friendly personal financial advisor AI for South African users.
+Give concrete, personalised advice based on the user's financial data provided.
+Use Rand (R) for all amounts. Be concise — keep responses under 150 words unless asked for detail.
+IMPORTANT: Reply in plain conversational text only. Never return JSON or code blocks.`;
 
 // -----------------------------------------------------------------------------
 // Fallback when no GROQ_API_KEY is configured
 // -----------------------------------------------------------------------------
 const MOCK_INSIGHTS = {
   highlights: [
-    { label: 'AI Insights Unavailable', text: 'Add a GROQ_API_KEY to your environment to enable AI-powered insights.', type: 'info' },
+    { label: 'AI Unavailable', text: 'Add a GROQ_API_KEY to your environment to enable AI insights.', type: 'info' }
   ],
   tips: [
-    { title: 'Get started', body: 'Visit console.groq.com to get a free Groq API key — no credit card required.', type: 'info' }
+    { title: 'Get started', body: 'Visit console.groq.com for a free API key — no credit card needed.', type: 'info' }
   ],
   anomalies: []
 };
 
 // -----------------------------------------------------------------------------
-// Helper: fetch user's complete financial snapshot from the database
+// Helper: fetch financial snapshot from DB
 // -----------------------------------------------------------------------------
 async function getFinancialSnapshot(userId) {
-  const [transactions, budgets, goals, assets, networthInsights, networthHistory] = await Promise.all([
+  const [transactions, budgets, goals, assets] = await Promise.all([
     pool.query('SELECT * FROM transactions WHERE user_id = $1 ORDER BY date DESC LIMIT 100', [userId]),
     pool.query('SELECT * FROM budgets WHERE user_id = $1', [userId]),
     pool.query('SELECT * FROM goals WHERE user_id = $1', [userId]),
     pool.query('SELECT * FROM assets WHERE user_id = $1', [userId]),
-    getNetworthInsights(userId),
-    getNetworthHistory(userId, 6),
   ]);
   return {
     transactions: transactions.rows,
     budgets: budgets.rows,
     goals: goals.rows,
     assets: assets.rows,
-    networthInsights,
-    networthHistory,
   };
 }
 
 // -----------------------------------------------------------------------------
-// Helper: get Groq client instance
+// Helper: build a compact context summary string (keeps token count low)
+// Instead of dumping raw JSON, we summarise key numbers as plain text.
+// This reduces context from ~4000 tokens down to ~300 tokens.
+// -----------------------------------------------------------------------------
+function buildCompactContext(snapshot) {
+  const { transactions = [], budgets = [], goals = [], assets = [] } = snapshot;
+
+  // ── Income & expenses this month ──
+  const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const monthlyTxns = transactions.filter(t => t.date && t.date.toString().startsWith(thisMonth));
+
+  const income = monthlyTxns
+    .filter(t => parseFloat(t.amount) > 0)
+    .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+
+  const expenses = monthlyTxns
+    .filter(t => parseFloat(t.amount) < 0)
+    .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+
+  // ── Spending by category ──
+  const byCategory = {};
+  monthlyTxns.filter(t => parseFloat(t.amount) < 0).forEach(t => {
+    const cat = t.category || 'Other';
+    byCategory[cat] = (byCategory[cat] || 0) + Math.abs(parseFloat(t.amount));
+  });
+  const categoryLines = Object.entries(byCategory)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([cat, amt]) => `  ${cat}: R${amt.toFixed(0)}`)
+    .join('\n');
+
+  // ── Budget status ──
+  const budgetLines = budgets.slice(0, 6).map(b => {
+    const spent = byCategory[b.category] || 0;
+    const pct = b.monthly_limit > 0 ? Math.round((spent / b.monthly_limit) * 100) : 0;
+    return `  ${b.category}: R${spent.toFixed(0)} / R${parseFloat(b.monthly_limit).toFixed(0)} (${pct}%)`;
+  }).join('\n');
+
+  // ── Goals ──
+  const goalLines = goals.slice(0, 4).map(g =>
+    `  ${g.name}: R${parseFloat(g.saved_amount).toFixed(0)} / R${parseFloat(g.target_amount).toFixed(0)}`
+  ).join('\n');
+
+  // ── Net worth ──
+  const totalAssets = assets.filter(a => a.type === 'asset').reduce((s, a) => s + parseFloat(a.value), 0);
+  const totalLiabilities = assets.filter(a => a.type === 'liability').reduce((s, a) => s + parseFloat(a.value), 0);
+  const netWorth = totalAssets - totalLiabilities;
+
+  // ── Recent transactions (last 5 only) ──
+  const recentTxns = transactions.slice(0, 5)
+    .map(t => `  ${t.date?.toString().slice(0, 10)} ${t.name} (${t.category}): R${parseFloat(t.amount).toFixed(0)}`)
+    .join('\n');
+
+  return `FINANCIAL SUMMARY (${thisMonth}):
+Income: R${income.toFixed(0)} | Expenses: R${expenses.toFixed(0)} | Saved: R${(income - expenses).toFixed(0)}
+
+TOP SPENDING:
+${categoryLines || '  No expenses recorded'}
+
+BUDGET STATUS:
+${budgetLines || '  No budgets set'}
+
+SAVINGS GOALS:
+${goalLines || '  No goals set'}
+
+NET WORTH: R${netWorth.toFixed(0)} (Assets: R${totalAssets.toFixed(0)}, Liabilities: R${totalLiabilities.toFixed(0)})
+
+RECENT TRANSACTIONS:
+${recentTxns || '  No transactions'}`;
+}
+
+// -----------------------------------------------------------------------------
+// Helper: get Groq client
 // -----------------------------------------------------------------------------
 function getGroqClient() {
   return new Groq({ apiKey: process.env.GROQ_API_KEY });
 }
 
 // -----------------------------------------------------------------------------
-// Helper: strip markdown code fences from raw model response
+// Helper: strip markdown fences
 // -----------------------------------------------------------------------------
 function stripMarkdownFences(raw) {
   return raw
@@ -93,38 +149,24 @@ function stripMarkdownFences(raw) {
 }
 
 // -----------------------------------------------------------------------------
-// Helper: detect if a string looks like raw JSON (starts with { or [)
-// Used to catch cases where the model ignores the conversational instruction
-// -----------------------------------------------------------------------------
-function looksLikeJSON(text) {
-  const trimmed = text.trim();
-  return trimmed.startsWith('{') || trimmed.startsWith('[');
-}
-
-// -----------------------------------------------------------------------------
 // POST /api/ai/insights
-// Returns structured JSON highlights, tips, and anomalies
 // -----------------------------------------------------------------------------
 router.post('/insights', async (req, res) => {
   try {
-    if (!process.env.GROQ_API_KEY) {
-      return res.json(MOCK_INSIGHTS);
-    }
+    if (!process.env.GROQ_API_KEY) return res.json(MOCK_INSIGHTS);
 
     const snapshot = await getFinancialSnapshot(req.user.id);
-    const groq = getGroqClient();
+    const compactContext = buildCompactContext(snapshot);
 
+    const groq = getGroqClient();
     const completion = await groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages: [
         { role: 'system', content: INSIGHTS_SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: `Generate financial insights based on this data:\n\n${JSON.stringify(snapshot, null, 2)}`
-        }
+        { role: 'user', content: `Generate insights from this data:\n\n${compactContext}` }
       ],
       temperature: 0.4,
-      max_tokens: 1024,
+      max_tokens: 600,
     });
 
     const raw = completion.choices[0]?.message?.content?.trim() || '';
@@ -138,9 +180,8 @@ router.post('/insights', async (req, res) => {
         try { return res.json(JSON.parse(match[0])); } catch { /* fall through */ }
       }
       return res.json({
-        highlights: [{ label: 'Analysis', text: raw.substring(0, 300), type: 'info' }],
-        tips: [],
-        anomalies: [],
+        highlights: [{ label: 'Analysis', text: raw.substring(0, 200), type: 'info' }],
+        tips: [], anomalies: [],
       });
     }
   } catch (err) {
@@ -151,7 +192,6 @@ router.post('/insights', async (req, res) => {
 
 // -----------------------------------------------------------------------------
 // POST /api/ai/chat
-// Streams a conversational plain-text response as SSE
 // -----------------------------------------------------------------------------
 router.post('/chat', async (req, res) => {
   try {
@@ -162,59 +202,56 @@ router.post('/chat', async (req, res) => {
     }
 
     if (!process.env.GROQ_API_KEY) {
-      return res.json({ role: 'assistant', content: 'AI advisor is unavailable. Please add a GROQ_API_KEY.' });
+      return res.json({ role: 'assistant', content: MOCK_INSIGHTS.highlights[0].text });
     }
 
-    // Fetch snapshot from DB if frontend didn't send it
-    const context = financialContext && Object.keys(financialContext).length > 0
+    // Get snapshot and build compact summary
+    const snapshot = financialContext && Object.keys(financialContext).length > 0
       ? financialContext
       : await getFinancialSnapshot(req.user.id);
 
-    const contextNote = `Here is the user's current financial data — use it to inform all responses. Do NOT repeat this data back to the user. Use it only to give personalised advice:\n\n${JSON.stringify(context, null, 2)}`;
+    const compactContext = buildCompactContext(snapshot);
 
-    // Build Groq message array
+    // Keep only the last 6 messages to avoid history bloat
+    const recentMessages = messages.slice(-6);
+
     const groqMessages = [
       { role: 'system', content: CHAT_SYSTEM_PROMPT },
-      { role: 'user', content: contextNote },
-      { role: 'assistant', content: 'Got it — I have your financial data and am ready to give you personalised advice.' },
-      ...messages.map(m => ({
+      { role: 'user', content: `My financial data:\n\n${compactContext}` },
+      { role: 'assistant', content: 'Got it — I have your financial summary and am ready to help.' },
+      ...recentMessages.map(m => ({
         role: m.role === 'assistant' ? 'assistant' : 'user',
         content: m.content,
       })),
     ];
 
-    // Stream back as SSE
+    // Stream response as SSE
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
 
     const groq = getGroqClient();
-
     const stream = await groq.chat.completions.create({
       model: 'llama-3.1-8b-instant',
       messages: groqMessages,
       temperature: 0.7,
-      max_tokens: 1024,
+      max_tokens: 400, // keep responses concise
       stream: true,
     });
 
     let fullText = '';
-
     for await (const chunk of stream) {
       const text = chunk.choices[0]?.delta?.content || '';
       if (text) {
         fullText += text;
-
-        // Safety check: if the model starts responding with JSON, stop and
-        // send a friendly fallback instead of streaming raw JSON to the UI
-        if (fullText.length < 50 && looksLikeJSON(fullText)) {
-          res.write(`data: ${JSON.stringify({ text: "I'm analysing your finances. Here's what stands out: your recent transactions show some interesting patterns. Could you ask me something more specific, like 'How can I reduce my spending?' or 'Am I on track with my savings goals?'" })}\n\n`);
+        // Safety: if model starts with JSON, abort and send fallback
+        if (fullText.length < 50 && (fullText.trim().startsWith('{') || fullText.trim().startsWith('['))) {
+          res.write(`data: ${JSON.stringify({ text: "Let me help with that. Could you ask me something specific about your finances — like how to reduce spending or whether you're on track with your goals?" })}\n\n`);
           res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
           res.end();
           return;
         }
-
         res.write(`data: ${JSON.stringify({ text })}\n\n`);
       }
     }
