@@ -394,6 +394,7 @@ export default function Journal() {
                   value={formData.title}
                   onChange={e => setFormData(p => ({ ...p, title: e.target.value }))}
                   className="w-full bg-transparent border-none outline-none text-xl font-bold text-[var(--text-primary)] placeholder-[var(--text-secondary)] focus:outline-none"
+                  style={{ fontFamily: 'var(--font-journal)', fontSize: '19px', lineHeight: '1.9' }}
                 />
                 <div className="flex flex-wrap gap-1.5">
                   {Object.entries(MOODS).map(([key, m]) => (
@@ -416,8 +417,8 @@ export default function Journal() {
                     placeholder={textareaPlaceholder}
                     value={formData.content}
                     onChange={handleContentChange}
-                    className="w-full bg-transparent border-none outline-none text-[15px] text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none leading-relaxed"
-                    style={{ minHeight: '300px' }}
+                    className="w-full bg-transparent border-none outline-none text-[var(--text-primary)] placeholder-[var(--text-secondary)] resize-none"
+                    style={{ minHeight: '300px', fontFamily: 'var(--font-journal)', fontSize: '19px', lineHeight: '1.9' }}
                     maxLength={5000}
                   />
                   <div className="text-right text-xs text-[var(--text-secondary)] mt-1">
@@ -513,7 +514,8 @@ export default function Journal() {
                   </div>
                 )}
 
-                <div className="text-[15px] text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
+                <div className="text-[var(--text-primary)] whitespace-pre-wrap"
+                  style={{ fontFamily: 'var(--font-journal)', fontSize: '19px', lineHeight: '1.9' }}>
                   {selectedEntry.content}
                 </div>
 

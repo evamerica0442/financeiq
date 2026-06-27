@@ -29,6 +29,7 @@
   --skeleton-shimmer: #2A2F3E;
   --glass-bg: rgba(22, 26, 35, 0.8);
   --glass-border: rgba(42, 47, 62, 0.5);
+  --font-journal: 'Caveat', cursive;
 }
 
 /* Light mode */
