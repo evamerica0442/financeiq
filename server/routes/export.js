@@ -152,19 +152,20 @@ router.get('/report', async (req, res) => {
       .text(`Generated on ${new Date().toLocaleDateString('en-ZA', { year: 'numeric', month: 'long', day: 'numeric' })}`, MARGIN_L, curY);
     curY += 30;
 
-    // Summary box
-    const summaryBoxH = 130;
+    // Summary box — 5 rows × 20px + 30px header padding + 16px bottom = 146px minimum
+    const summaryBoxH = 150;
     ensureSpace(summaryBoxH + 10);
     doc.rect(MARGIN_L, curY, CONTENT_W, summaryBoxH).fill('#F5F7FA');
     doc.fontSize(11).fillColor('#333').font('Helvetica-Bold').text('SUMMARY', MARGIN_L + 20, curY + 12);
     curY += 30;
 
+    const savingsRateLabel = `${savingsRate}%`;
     const summaryItems = [
-      { label: 'Total Income',   value: fmt(totalIncome),   color: '#00C896' },
-      { label: 'Total Expenses', value: fmt(totalExpenses), color: '#FF5C5C' },
-      { label: 'Net Savings',    value: fmt(netSavings),    color: netSavings >= 0 ? '#00C896' : '#FF5C5C' },
-      { label: 'Savings Rate',   value: `${savingsRate}%`,  color: '#4D9FFF' },
-      { label: 'Net Worth',      value: fmt(netWorth),      color: netWorth >= 0 ? '#00C896' : '#FF5C5C' },
+      { label: 'Total Income',   value: fmt(totalIncome),      color: '#00C896' },
+      { label: 'Total Expenses', value: fmt(totalExpenses),    color: '#FF5C5C' },
+      { label: 'Net Savings',    value: fmt(netSavings),       color: netSavings >= 0 ? '#00C896' : '#FF5C5C' },
+      { label: 'Savings Rate',   value: savingsRateLabel,      color: savingsRate >= 0 ? '#4D9FFF' : '#FF5C5C' },
+      { label: 'Net Worth',      value: fmt(netWorth),         color: netWorth >= 0 ? '#00C896' : '#FF5C5C' },
     ];
     summaryItems.forEach(item => {
       doc.fontSize(10).fillColor('#555').font('Helvetica').text(item.label, MARGIN_L + 20, curY);
