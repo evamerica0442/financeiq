@@ -4,6 +4,7 @@ import { Bar, Doughnut } from 'react-chartjs-2';
 import api from '../api';
 import useCountUp from '../hooks/useCountUp';
 import { useCategories } from '../hooks/useCategories';
+import FinancialNews from '../components/FinancialNews';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Title, Tooltip, Legend);
 
@@ -682,6 +683,9 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* ── Financial News ──────────────────────────────────────────────── */}
+      <FinancialNews />
 
       {/* ── Keyframe injection for staggered animation ──────────────────── */}
       <style>{`

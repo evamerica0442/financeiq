@@ -1,52 +1,71 @@
 import React from 'react';
 
+const formatCurrency = (amount) =>
+  'R' + Math.abs(amount).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const formatDate = (dateStr) => {
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
 export default function TransactionRow({ transaction, onEdit, onDelete }) {
   const isIncome = transaction.amount > 0;
   const absAmount = Math.abs(transaction.amount);
 
-  const formatCurrency = (amount) => {
-    return 'R' + amount.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const formatDate = (dateStr) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' });
-  };
-
-  const categoryColors = {
-    'Housing': 'bg-gray-100 text-gray-700',
-    'Groceries': 'bg-green-100 text-green-700',
-    'Transport': 'bg-yellow-100 text-yellow-700',
-    'Dining out': 'bg-orange-100 text-orange-700',
-    'Utilities': 'bg-blue-100 text-blue-700',
-    'Subscriptions': 'bg-purple-100 text-purple-700',
-    'Health': 'bg-red-100 text-red-700',
-    'Entertainment': 'bg-pink-100 text-pink-700',
-    'Education': 'bg-indigo-100 text-indigo-700',
-    'Savings': 'bg-teal-100 text-teal-700',
-    'Income': 'bg-emerald-100 text-emerald-700',
-    'Other': 'bg-gray-100 text-gray-700',
-  };
-
   return (
-    <div className="flex items-center justify-between py-3 px-4 hover:bg-gray-50 rounded-lg transition-colors">
-      <div className="flex items-center space-x-3 flex-1">
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-gray-900 truncate">{transaction.name}</p>
-          <p className="text-xs text-gray-500">{formatDate(transaction.date)}</p>
-        </div>
-        <span className={`px-2 py-1 text-xs font-medium rounded-full ${categoryColors[transaction.category] || 'bg-gray-100 text-gray-700'}`}>
-          {transaction.category}
-        </span>
+    <div
+      className="flex items-center gap-3 py-3 px-4 rounded-xl transition-colors duration-150 group"
+      onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)'; }}
+      onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+    >
+      {/* Category icon */}
+      <div
+        className="w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0"
+        style={{
+          backgroundColor: isIncome
+            ? 'rgba(0,212,154,0.12)'
+            : 'rgba(139,146,165,0.12)',
+        }}
+      >
+        {isIncome ? '💰' : '💳'}
       </div>
-      <div className="flex items-center space-x-3 ml-4">
-        <span className={`text-sm font-semibold ${isIncome ? 'text-green-600' : 'text-red-600'}`}>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+          {transaction.name}
+        </p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span
+            className="text-xs px-2 py-0.5 rounded-full font-medium"
+            style={{
+              backgroundColor: 'var(--bg-elevated)',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            {transaction.category}
+          </span>
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            {formatDate(transaction.date)}
+          </span>
+        </div>
+      </div>
+
+      {/* Amount + actions */}
+      <div className="flex items-center gap-2">
+        <span
+          className="text-sm font-semibold tabular-nums"
+          style={{ color: isIncome ? 'var(--accent-green)' : 'var(--text-primary)' }}
+        >
           {isIncome ? '+' : '-'}{formatCurrency(absAmount)}
         </span>
-        <div className="flex space-x-1">
+        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
           <button
             onClick={() => onEdit(transaction)}
-            className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+            className="p-1.5 rounded-lg transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-blue)'; e.currentTarget.style.backgroundColor = 'rgba(77,159,255,0.1)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent'; }}
             title="Edit"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -55,7 +74,10 @@ export default function TransactionRow({ transaction, onEdit, onDelete }) {
           </button>
           <button
             onClick={() => onDelete(transaction.id)}
-            className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+            className="p-1.5 rounded-lg transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent-red)'; e.currentTarget.style.backgroundColor = 'rgba(255,91,107,0.1)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.backgroundColor = 'transparent'; }}
             title="Delete"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -62,7 +62,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] transition-colors duration-200">
       {user && !isAuthPage && <Sidebar />}
-      <div className={user && !isAuthPage ? 'lg:ml-[240px]' : ''}>
+      <div className={user && !isAuthPage ? 'lg:ml-[252px]' : ''}>
         <main className={user && !isAuthPage ? 'pt-0 lg:pt-0 pb-16 lg:pb-0' : ''}>
           <Routes location={location}>
             <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
