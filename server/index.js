@@ -17,6 +17,7 @@ const exportRoutes = require('./routes/export');
 const categoryRoutes = require('./routes/categories');
 const reportRoutes = require('./routes/reports');
 const analysisRoutes = require('./routes/analysis');
+const journalRoutes = require('./routes/journal');
 
 // Start net worth automation scheduler
 require('./services/scheduler');
@@ -46,6 +47,7 @@ app.use('/api/export', exportRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/analysis', analysisRoutes);
+app.use('/api/journal', journalRoutes);
 
 // Serve React build in production
 if (process.env.NODE_ENV === 'production') {

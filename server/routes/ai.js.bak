@@ -8,10 +8,10 @@ const router = express.Router();
 router.use(authMiddleware);
 
 // -----------------------------------------------------------------------------
-// SYSTEM PROMPT --- /insights (JSON output)
+// SYSTEM PROMPT — /insights (JSON output)
 // -----------------------------------------------------------------------------
 const INSIGHTS_SYSTEM_PROMPT = `You are FinanceIQ, a personal financial advisor AI for South African users.
-Analyse the user's financial data and respond ONLY with valid JSON --- no markdown, no backticks, no explanation:
+Analyse the user's financial data and respond ONLY with valid JSON — no markdown, no backticks, no explanation:
 {
   "highlights": [{"label": "string", "text": "string", "type": "ok|warn|danger|info"}],
   "tips": [{"title": "string", "body": "string", "type": "ok|warn|danger"}],
@@ -20,11 +20,11 @@ Analyse the user's financial data and respond ONLY with valid JSON --- no markdo
 Use Rand (R) for all amounts. Be concise. Max 3 highlights, 3 tips, 2 anomalies.`;
 
 // -----------------------------------------------------------------------------
-// SYSTEM PROMPT --- /chat (conversational, NO JSON)
+// SYSTEM PROMPT — /chat (conversational, NO JSON)
 // -----------------------------------------------------------------------------
 const CHAT_SYSTEM_PROMPT = `You are FinanceIQ, a friendly personal financial advisor AI for South African users.
 Give concrete, personalised advice based on the user's financial data provided.
-Use Rand (R) for all amounts. Be concise --- keep responses under 150 words unless asked for detail.
+Use Rand (R) for all amounts. Be concise — keep responses under 150 words unless asked for detail.
 IMPORTANT: Reply in plain conversational text only. Never return JSON or code blocks.`;
 
 // -----------------------------------------------------------------------------
@@ -35,10 +35,83 @@ const MOCK_INSIGHTS = {
     { label: 'AI Unavailable', text: 'Add a GROQ_API_KEY to your environment to enable AI insights.', type: 'info' }
   ],
   tips: [
-    { title: 'Get started', body: 'Visit console.groq.com for a free API key --- no credit card needed.', type: 'info' }
+    { title: 'Get started', body: 'Visit console.groq.com for a free API key — no credit card needed.', type: 'info' }
   ],
   anomalies: []
 };
+
+// -----------------------------------------------------------------------------
+// Helper: build a compact context summary string (keeps token count low)
+// Instead of dumping raw JSON, we summarise key numbers as plain text.
+// This reduces context from ~4000 tokens down to ~300 tokens.
+// -----------------------------------------------------------------------------
+function buildCompactContext(snapshot) {
+  const { transactions = [], budgets = [], goals = [], assets = [] } = snapshot;
+
+  // ── Income & expenses this month ──
+  const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const monthlyTxns = transactions.filter(t => t.date && t.date.toString().startsWith(thisMonth));
+
+  const income = monthlyTxns
+    .filter(t => parseFloat(t.amount) > 0)
+    .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+
+  const expenses = monthlyTxns
+    .filter(t => parseFloat(t.amount) < 0)
+    .reduce((sum, t) => sum + Math.abs(parseFloat(t.amount)), 0);
+
+  // ── Spending by category ──
+  const byCategory = {};
+  monthlyTxns.filter(t => parseFloat(t.amount) < 0).forEach(t => {
+    const cat = t.category || 'Other';
+    byCategory[cat] = (byCategory[cat] || 0) + Math.abs(parseFloat(t.amount));
+  });
+  const categoryLines = Object.entries(byCategory)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([cat, amt]) => `  ${cat}: R${amt.toFixed(0)}`)
+    .join('\n');
+
+  // ── Budget status ──
+  const budgetLines = budgets.slice(0, 6).map(b => {
+    const spent = byCategory[b.category] || 0;
+    const pct = b.monthly_limit > 0 ? Math.round((spent / b.monthly_limit) * 100) : 0;
+    return `  ${b.category}: R${spent.toFixed(0)} / R${parseFloat(b.monthly_limit).toFixed(0)} (${pct}%)`;
+  }).join('\n');
+
+  // ── Goals ──
+  const goalLines = goals.slice(0, 4).map(g =>
+    `  ${g.name}: R${parseFloat(g.saved_amount).toFixed(0)} / R${parseFloat(g.target_amount).toFixed(0)}`
+  ).join('\n');
+
+  // ── Net worth ──
+  const totalAssets = assets.filter(a => a.type === 'asset').reduce((s, a) => s + parseFloat(a.value), 0);
+  const totalLiabilities = assets.filter(a => a.type === 'liability').reduce((s, a) => s + parseFloat(a.value), 0);
+  const netWorth = totalAssets - totalLiabilities;
+
+  // ── Recent transactions (last 5 only) ──
+  const recentTxns = transactions.slice(0, 5)
+    .map(t => `  ${t.date?.toString().slice(0, 10)} ${t.name} (${t.category}): R${parseFloat(t.amount).toFixed(0)}`)
+    .join('\n');
+
+  return `FINANCIAL SUMMARY (${thisMonth}):
+Income: R${income.toFixed(0)} | Expenses: R${expenses.toFixed(0)} | Saved: R${(income - expenses).toFixed(0)}
+
+TOP SPENDING:
+${categoryLines || '  No expenses recorded'}
+
+BUDGET STATUS:
+${budgetLines || '  No budgets set'}
+
+SAVINGS GOALS:
+${goalLines || '  No goals set'}
+
+NET WORTH: R${netWorth.toFixed(0)} (Assets: R${totalAssets.toFixed(0)}, Liabilities: R${totalLiabilities.toFixed(0)})
+
+RECENT TRANSACTIONS:
+${recentTxns || '  No transactions'}`;
+}
 
 // -----------------------------------------------------------------------------
 // Helper: get Groq client
@@ -52,13 +125,11 @@ function getGroqClient() {
 // -----------------------------------------------------------------------------
 function stripMarkdownFences(raw) {
   return raw
-    .replace(/^```json\\s*/i, '')
-    .replace(/^```\\s*/i, '')
-    .replace(/```\\s*$/i, '')
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
     .trim();
 }
-
-
 
 // -----------------------------------------------------------------------------
 // POST /api/ai/insights
@@ -117,24 +188,27 @@ router.post('/chat', async (req, res) => {
       return res.json({ role: 'assistant', content: MOCK_INSIGHTS.highlights[0].text });
     }
 
+    // Get snapshot and build compact summary
     const snapshot = financialContext && Object.keys(financialContext).length > 0
       ? financialContext
       : await getFinancialSnapshot(req.user.id);
 
     const compactContext = buildCompactContext(snapshot);
 
+    // Keep only the last 6 messages to avoid history bloat
     const recentMessages = messages.slice(-6);
 
     const groqMessages = [
       { role: 'system', content: CHAT_SYSTEM_PROMPT },
       { role: 'user', content: `My financial data:\n\n${compactContext}` },
-      { role: 'assistant', content: 'Got it --- I have your financial summary and am ready to help.' },
+      { role: 'assistant', content: 'Got it — I have your financial summary and am ready to help.' },
       ...recentMessages.map(m => ({
         role: m.role === 'assistant' ? 'assistant' : 'user',
         content: m.content,
       })),
     ];
 
+    // Stream response as SSE
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -145,7 +219,7 @@ router.post('/chat', async (req, res) => {
       model: 'llama-3.1-8b-instant',
       messages: groqMessages,
       temperature: 0.7,
-      max_tokens: 400,
+      max_tokens: 400, // keep responses concise
       stream: true,
     });
 
@@ -154,8 +228,9 @@ router.post('/chat', async (req, res) => {
       const text = chunk.choices[0]?.delta?.content || '';
       if (text) {
         fullText += text;
+        // Safety: if model starts with JSON, abort and send fallback
         if (fullText.length < 50 && (fullText.trim().startsWith('{') || fullText.trim().startsWith('['))) {
-          res.write(`data: ${JSON.stringify({ text: "Let me help with that. Could you ask me something specific about your finances --- like how to reduce spending or whether you're on track with your goals?" })}\n\n`);
+          res.write(`data: ${JSON.stringify({ text: "Let me help with that. Could you ask me something specific about your finances — like how to reduce spending or whether you're on track with your goals?" })}\n\n`);
           res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
           res.end();
           return;

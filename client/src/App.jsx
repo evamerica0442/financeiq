@@ -16,6 +16,7 @@ import Budgets from './pages/Budgets';
 import Goals from './pages/Goals';
 import NetWorth from './pages/NetWorth';
 import AIAdvisor from './pages/AIAdvisor';
+import Journal from './pages/Journal';
 import Categories from './pages/Categories';
 import Reports from './pages/Reports';
 
@@ -74,6 +75,7 @@ function AppContent() {
             <Route path="/categories" element={<ProtectedRoute><ErrorBoundary><Categories /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><ErrorBoundary><Reports /></ErrorBoundary></ProtectedRoute>} />
             <Route path="/advisor" element={<ProtectedRoute><ErrorBoundary><AIAdvisor /></ErrorBoundary></ProtectedRoute>} />
+            <Route path="/journal" element={<ProtectedRoute><ErrorBoundary><Journal /></ErrorBoundary></ProtectedRoute>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
