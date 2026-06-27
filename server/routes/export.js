@@ -231,10 +231,12 @@ router.get('/report', async (req, res) => {
       const rowY = tthY + 22 + i * 20 - pageBreakOffset;
       if (i % 2 === 0) doc.rect(60, rowY, doc.page.width - 120, 20).fill('#FAFBFC');
 
-      const txnDate = new Date(tx.date).toLocaleDateString('en-ZA', { day: '2-digit', month: '2-digit', year: 'numeric' });
       const amtColor = tx.amount >= 0 ? '#00C896' : '#FF5C5C';
       const amtPrefix = tx.amount >= 0 ? '+' : '';
-      const formattedDate = tx.date ? tx.date.substring(0, 10) : '—';
+      // tx.date may be a Date object or a string depending on the pg driver
+      const formattedDate = tx.date
+        ? (tx.date instanceof Date ? tx.date.toISOString() : String(tx.date)).substring(0, 10)
+        : '—';
 
       doc.fontSize(9).fillColor('#555').font('Helvetica');
       doc.text(formattedDate, tColX[0] + 8, rowY + 4, { width: 60 });
@@ -243,7 +245,6 @@ router.get('/report', async (req, res) => {
       doc.fillColor(amtColor).font('Helvetica-Bold');
       doc.text(`${amtPrefix}${fmt(tx.amount)}`, tColX[3] + 8, rowY + 4, { width: 80, align: 'right' });
       doc.fillColor('#333');
-      adjustedY = undefined;
     });
 
     // ────────────────────────────────────

@@ -2,7 +2,7 @@ const express = require('express');
 const Groq = require('groq-sdk');
 const pool = require('../db');
 const authMiddleware = require('../middleware/authMiddleware');
-const { getFinancialSnapshot } = require('../utils/buildCompactContext');
+const { buildCompactContext, getFinancialSnapshot } = require('../utils/buildCompactContext');
 
 const router = express.Router();
 router.use(authMiddleware);
