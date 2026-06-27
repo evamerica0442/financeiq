@@ -42,13 +42,14 @@ router.get('/report', async (req, res) => {
     const netSavings = totalIncome - totalExpenses;
     const savingsRate = totalIncome > 0 ? Math.round((netSavings / totalIncome) * 100) : 0;
 
-    // Net worth
+    // Net worth — mirrors the logic in networthService.js (Math.abs on liabilities
+    // because values may be stored as negative numbers in the database)
     const totalAssets = assets
       .filter(a => a.type === 'asset')
       .reduce((sum, a) => sum + parseFloat(a.value), 0);
     const totalLiabilities = assets
       .filter(a => a.type === 'liability')
-      .reduce((sum, a) => sum + parseFloat(a.value), 0);
+      .reduce((sum, a) => sum + Math.abs(parseFloat(a.value)), 0);
     const netWorth = totalAssets - totalLiabilities;
 
     // Spending by category
