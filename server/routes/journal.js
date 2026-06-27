@@ -62,7 +62,10 @@ router.get('/', async (req, res) => {
       paramIdx++;
     }
 
-    const countResult = await pool.query(`SELECT COUNT(*) FROM journal_entries ${whereClause}`, params);
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM journal_entries ${whereClause}`,
+      params
+    );
     const total = parseInt(countResult.rows[0].count, 10);
 
     const result = await pool.query(
@@ -73,7 +76,7 @@ router.get('/', async (req, res) => {
     res.json({
       entries: result.rows,
       total,
-      hasMore: offset + result.rows.length < total,
+      hasMore: parseInt(offset) + result.rows.length < total,
     });
   } catch (err) {
     console.error('Journal list error:', err);
@@ -83,6 +86,7 @@ router.get('/', async (req, res) => {
 
 // -----------------------------------------------------------------------------
 // GET /api/journal/summary/ai - AI analysis of recent entries
+// NOTE: This route must be defined BEFORE /:id to avoid being caught by it
 // -----------------------------------------------------------------------------
 router.get('/summary/ai', async (req, res) => {
   try {
@@ -119,7 +123,7 @@ router.get('/summary/ai', async (req, res) => {
       messages: [
         {
           role: 'system',
-          content: `You are FinanceIQ. Analyse these journal entries and the user's finances to find patterns and give an overall summary. Plain text only, under 200 words. Be warm and encouraging.`,
+          content: 'You are FinanceIQ. Analyse these journal entries and the user\'s finances to find patterns and give an overall summary. Plain text only, under 200 words. Be warm and encouraging.',
         },
         {
           role: 'user',
@@ -189,6 +193,15 @@ router.post('/', async (req, res) => {
     );
 
     res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Journal create error:', err);
+    res.status(500).json({ error: 'Failed to create journal entry.' });
+  }
+});
+
+// -----------------------------------------------------------------------------
+// PUT /api/journal/:id - update entry
+// -----------------------------------------------------------------------------
 router.put('/:id', async (req, res) => {
   try {
     const existing = await pool.query(
@@ -205,10 +218,14 @@ router.put('/:id', async (req, res) => {
     const newTitle = title !== undefined ? title.trim() : entry.title;
     const newContent = content !== undefined ? content.trim() : entry.content;
     const newMood = mood !== undefined ? mood : entry.mood;
-    let newTags = tags !== undefined ? tags.map(t => t.toLowerCase().trim()).filter(Boolean) : entry.tags;
+    const newTags = tags !== undefined
+      ? tags.map(t => t.toLowerCase().trim()).filter(Boolean)
+      : entry.tags;
 
     const contentChanged = newContent !== entry.content;
-    const clearInsight = contentChanged ? ', ai_insight = NULL, ai_insight_generated_at = NULL' : '';
+    const clearInsight = contentChanged
+      ? ', ai_insight = NULL, ai_insight_generated_at = NULL'
+      : '';
 
     const result = await pool.query(
       `UPDATE journal_entries
@@ -245,7 +262,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // -----------------------------------------------------------------------------
-// POST /api/journal/:id/insight - generate AI insight for an entry
+// POST /api/journal/:id/insight - generate AI insight for a single entry
 // -----------------------------------------------------------------------------
 router.post('/:id/insight', async (req, res) => {
   try {
@@ -260,6 +277,7 @@ router.post('/:id/insight', async (req, res) => {
     const entry = result.rows[0];
     const force = req.query.force === 'true';
 
+    // Return cached insight if it exists and is less than 24 hours old
     if (!force && entry.ai_insight && entry.ai_insight_generated_at) {
       const age = Date.now() - new Date(entry.ai_insight_generated_at).getTime();
       if (age < 24 * 60 * 60 * 1000) {
@@ -283,8 +301,8 @@ router.post('/:id/insight', async (req, res) => {
           content: `You are FinanceIQ, a supportive and insightful personal finance AI.
 A user has written a journal entry about their financial life.
 Your job is to:
-1. Acknowledge what they've written with empathy
-2. Connect their thoughts/plans to their actual financial data
+1. Acknowledge what they have written with empathy
+2. Connect their thoughts and plans to their actual financial data
 3. Give 1-2 specific, actionable suggestions based on what they wrote
 4. If they expressed stress or worry, be encouraging and constructive
 5. If they mentioned a goal or plan, validate it and suggest how to make it concrete
@@ -294,7 +312,7 @@ Use Rand (R) for amounts. Do NOT return JSON. Plain conversational text only.`,
         },
         {
           role: 'user',
-          content: `Journal entry titled "${entry.title}":\n\n"${entry.content}"\n\nTheir current financial snapshot:\n${compactContext}\n\nPlease give a brief, personalised insight about this journal entry.`,
+          content: `Journal entry titled "${entry.title || 'Untitled'}":\n\n"${entry.content}"\n\nTheir current financial snapshot:\n${compactContext}\n\nPlease give a brief, personalised insight about this journal entry.`,
         },
       ],
       temperature: 0.4,
@@ -313,6 +331,7 @@ Use Rand (R) for amounts. Do NOT return JSON. Plain conversational text only.`,
     res.json({ insight, cached: false });
   } catch (err) {
     console.error('Journal insight error:', err);
+    // Return 200 so the frontend doesn't crash — just show no insight
     res.json({ insight: null, error: 'Could not generate insight right now. Try again later.' });
   }
 });
