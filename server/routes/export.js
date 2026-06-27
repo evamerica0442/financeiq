@@ -208,8 +208,9 @@ router.get('/report', async (req, res) => {
     doc.text('Category', tColX[2] + 8, tthY + 5, { width: 90 });
     doc.text('Amount', tColX[3] + 8, tthY + 5, { width: 80, align: 'right' });
 
+    let pageBreakOffset = 0;
     transactions.forEach((tx, i) => {
-      const y = tthY + 22 + i * 20;
+      const y = tthY + 22 + i * 20 - pageBreakOffset;
 
       // Check for page overflow
       if (y > doc.page.height - 60) {
@@ -223,10 +224,11 @@ router.get('/report', async (req, res) => {
         doc.text('Description', tColX[1] + 8, newY + 5, { width: 130 });
         doc.text('Category', tColX[2] + 8, newY + 5, { width: 90 });
         doc.text('Amount', tColX[3] + 8, newY + 5, { width: 80, align: 'right' });
-        var adjustedY = newY + 22 + (i * 20);
+        // Recalculate offset so next rows start from top of new page
+        pageBreakOffset = i * 20 - (newY + 22 - tthY - 22);
       }
 
-      const rowY = adjustedY || y;
+      const rowY = tthY + 22 + i * 20 - pageBreakOffset;
       if (i % 2 === 0) doc.rect(60, rowY, doc.page.width - 120, 20).fill('#FAFBFC');
 
       const txnDate = new Date(tx.date).toLocaleDateString('en-ZA', { day: '2-digit', month: '2-digit', year: 'numeric' });

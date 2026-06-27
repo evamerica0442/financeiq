@@ -1,6 +1,6 @@
 # FinanceIQ - Smart Finance Management
 
-A full-stack personal finance web application with AI-powered insights, built with React, Express, PostgreSQL (Neon), and Claude AI.
+A full-stack personal finance web application with AI-powered insights, built with React, Express, PostgreSQL (Neon), and Groq AI.
 
 ## Tech Stack
 
@@ -8,7 +8,7 @@ A full-stack personal finance web application with AI-powered insights, built wi
 - **Backend:** Node.js + Express
 - **Database:** PostgreSQL hosted on [Neon](https://neon.tech) (free tier)
 - **Auth:** JWT stored in httpOnly cookies, bcrypt for password hashing
-- **AI:** Google Gemini API (gemini-2.0-flash-lite) for financial insights and chat (free tier available at aistudio.google.com)
+- **AI:** Groq API (llama-3.1-8b-instant) for financial insights and chat (free tier available at console.groq.com)
 
 ## Features
 
@@ -17,7 +17,7 @@ A full-stack personal finance web application with AI-powered insights, built wi
 - 💰 **Budgets** - Category budgets with visual progress bars
 - 🎯 **Goals** - Savings goals with projections and deposit logging
 - 🏦 **Net Worth** - Assets/liabilities tracking with trend chart
-- 🤖 **AI Advisor** - Chat with Gemini AI about your finances, get personalised advice
+- 🤖 **AI Advisor** - Chat with Groq AI about your finances, get personalised advice
 
 ## Setup Instructions
 

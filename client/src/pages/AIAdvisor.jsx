@@ -264,7 +264,7 @@ export default function AIAdvisor() {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-lg font-bold text-[var(--text-primary)]">FinanceIQ AI</h1>
-            <Badge variant="purple" size="sm">Powered by Claude</Badge>
+            <Badge variant="purple" size="sm">Powered by Groq</Badge>
           </div>
           <p className="text-xs text-[var(--text-secondary)]">Your personal financial intelligence assistant</p>
         </div>

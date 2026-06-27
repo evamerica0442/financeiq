@@ -52,7 +52,7 @@ function buildCompactContext(snapshot) {
         .filter(t => parseFloat(t.amount) < 0 && (t.category || 'Uncategorised') === b.category)
         .reduce((sum, t) => sum + parseFloat(t.amount), 0)
     );
-    return `${b.category}: R${spent.toFixed(0)} / R${parseFloat(b.amount).toFixed(0)}`;
+    return `${b.category}: R${spent.toFixed(0)} / R${parseFloat(b.monthly_limit).toFixed(0)}`;
   }).join(' | ');
 
   // ── Goals ──

@@ -2,7 +2,7 @@ const express = require('express');
 const Groq = require('groq-sdk');
 const pool = require('../db');
 const authMiddleware = require('../middleware/authMiddleware');
-const { buildCompactContext, getFinancialSnapshot } = require('../utils/buildCompactContext');
+const { getFinancialSnapshot } = require('../utils/buildCompactContext');
 
 const router = express.Router();
 router.use(authMiddleware);
@@ -52,9 +52,9 @@ function getGroqClient() {
 // -----------------------------------------------------------------------------
 function stripMarkdownFences(raw) {
   return raw
-    .replace(/^```json\\s*/i, '')
-    .replace(/^```\\s*/i, '')
-    .replace(/```\\s*$/i, '')
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/```\s*$/i, '')
     .trim();
 }
 
