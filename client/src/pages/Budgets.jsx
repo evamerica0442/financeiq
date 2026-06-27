@@ -249,12 +249,11 @@ export default function Budgets() {
           ) : (
             <Card padding={false} className="overflow-hidden">
               {/* Table header */}
-              <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 px-5 py-3 border-b border-[var(--border)] text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">
+              <div className="hidden sm:grid grid-cols-[2fr_minmax(0,140px)_minmax(0,140px)_minmax(0,180px)] gap-2 px-5 py-3 border-b border-[var(--border)] text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">
                 <span>Category</span>
                 <span className="text-right">Budgeted</span>
                 <span className="text-right">Actual</span>
                 <span className="text-right">Remaining</span>
-                <span />
               </div>
 
               <div className="divide-y divide-[var(--border)]">
@@ -291,7 +290,7 @@ export default function Budgets() {
                     </div>
 
                     {/* Desktop layout */}
-                    <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 items-center">
+                    <div className="hidden sm:grid grid-cols-[2fr_minmax(0,140px)_minmax(0,140px)_minmax(0,180px)] gap-2 items-center">
                       <div className="flex items-center gap-3 min-w-0">
                         <span className="text-xl flex-shrink-0">{getCategoryIcon(row.category) || '📦'}</span>
                         <div className="min-w-0">
@@ -301,15 +300,16 @@ export default function Budgets() {
                       </div>
                       <p className="text-sm text-right text-[var(--text-secondary)] tabular-nums">{fmt(row.budget)}</p>
                       <p className={`text-sm text-right font-medium tabular-nums ${row.pct >= 100 ? 'text-[var(--accent-red)]' : 'text-[var(--text-primary)]'}`}>{fmt(row.actual)}</p>
-                      <div className="flex flex-col items-end gap-1">
+                      {/* Remaining: amount right-aligned, badge + actions below */}
+                      <div className="flex flex-col items-end gap-1.5">
                         <p className={`text-sm font-semibold tabular-nums ${row.remaining < 0 ? 'text-[var(--accent-red)]' : 'text-[var(--accent-green)]'}`}>
                           {row.remaining < 0 ? '-' : ''}{fmt(Math.abs(row.remaining))}
                         </p>
-                        <StatusBadge pct={row.pct} />
-                      </div>
-                      <div className="flex flex-col items-end gap-1.5">
-                        <button onClick={(e) => openEdit(row, e)} className="text-xs font-medium text-[var(--accent-blue)] hover:opacity-80 transition-opacity whitespace-nowrap">Edit</button>
-                        <button onClick={(e) => handleDelete(row.id, e)} className="text-xs font-medium text-[var(--accent-red)] hover:opacity-80 transition-opacity">Delete</button>
+                        <div className="flex items-center gap-3">
+                          <StatusBadge pct={row.pct} />
+                          <button onClick={(e) => openEdit(row, e)} className="text-xs font-medium text-[var(--accent-blue)] hover:opacity-80 transition-opacity whitespace-nowrap">Edit</button>
+                          <button onClick={(e) => handleDelete(row.id, e)} className="text-xs font-medium text-[var(--accent-red)] hover:opacity-80 transition-opacity">Delete</button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -317,14 +317,13 @@ export default function Budgets() {
               </div>
 
               {/* Table footer totals */}
-              <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_auto] gap-4 px-5 py-3 border-t border-[var(--border)] bg-[var(--bg-tertiary)]/50">
+              <div className="hidden sm:grid grid-cols-[2fr_minmax(0,140px)_minmax(0,140px)_minmax(0,180px)] gap-2 px-5 py-3 border-t border-[var(--border)] bg-[var(--bg-tertiary)]/50 items-center">
                 <span className="text-xs font-bold text-[var(--text-secondary)] uppercase tracking-wide">Total</span>
                 <span className="text-sm text-right font-bold text-[var(--text-primary)] tabular-nums">{fmt(totalBudget)}</span>
                 <span className={`text-sm text-right font-bold tabular-nums ${totalActual > totalBudget ? 'text-[var(--accent-red)]' : 'text-[var(--text-primary)]'}`}>{fmt(totalActual)}</span>
                 <span className={`text-sm text-right font-bold tabular-nums ${totalRemaining < 0 ? 'text-[var(--accent-red)]' : 'text-[var(--accent-green)]'}`}>
                   {totalRemaining < 0 ? '-' : ''}{fmt(Math.abs(totalRemaining))}
                 </span>
-                <span />
               </div>
             </Card>
           )}
